@@ -6,11 +6,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --cwd apps/api dev",
-    "dev:api": "bun run --cwd apps/api dev",
-    "dev:realtime": "bun run --cwd apps/realtime dev",
-    "dev:cms": "bun run --cwd apps/cms develop",
-    "dev:web": "bun run --cwd apps/web-miniapp dev",
+    "dev": "bun --filter @eventos/api dev",
+    "dev:api": "bun --filter @eventos/api dev",
+    "dev:realtime": "bun --filter @eventos/realtime dev",
+    "dev:cms": "bun --filter @eventos/cms dev",
+    "dev:web": "bun --filter @eventos/web-miniapp dev",
     "typecheck": "bunx tsc -b",
     "lint": "bunx eslint .",
     "format": "bunx prettier --write ."

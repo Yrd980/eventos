@@ -35,14 +35,14 @@ services:
       retries: 10
 
   cms:
-    image: node:20-alpine
+    image: oven/bun:1.3.14
     working_dir: /workspace/apps/cms
-    command: sh -lc "corepack enable && bun install && bun run develop"
+    command: sh -lc "bun install --filter @eventos/cms && bun run dev"
     env_file:
       - .env
     environment:
       HOST: 0.0.0.0
-      PORT: ${CMS_PORT:-1337}
+      PORT: ${CMS_PORT:-5174}
       DATABASE_CLIENT: postgres
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -51,9 +51,10 @@ services:
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-eventos}
       NODE_ENV: development
     ports:
-      - "${CMS_PORT:-1337}:1337"
+      - "${CMS_PORT:-5174}:5174"
     volumes:
       - ./:/workspace
+      - workspace-node-modules:/workspace/node_modules
       - cms-node-modules:/workspace/apps/cms/node_modules
     depends_on:
       postgres:
@@ -62,7 +63,7 @@ services:
   api:
     image: oven/bun:1.3.14
     working_dir: /workspace/apps/api
-    command: bun run dev
+    command: sh -lc "bun install --filter @eventos/api && bun run dev"
     env_file:
       - .env
     environment:
@@ -79,6 +80,7 @@ services:
       - "${API_PORT:-3000}:3000"
     volumes:
       - ./:/workspace
+      - workspace-node-modules:/workspace/node_modules
       - api-node-modules:/workspace/apps/api/node_modules
     depends_on:
       postgres:
@@ -89,7 +91,7 @@ services:
   realtime:
     image: oven/bun:1.3.14
     working_dir: /workspace/apps/realtime
-    command: bun run dev
+    command: sh -lc "bun install --filter @eventos/realtime && bun run dev"
     env_file:
       - .env
     environment:
@@ -101,6 +103,7 @@ services:
       - "${REALTIME_PORT:-3001}:3001"
     volumes:
       - ./:/workspace
+      - workspace-node-modules:/workspace/node_modules
       - realtime-node-modules:/workspace/apps/realtime/node_modules
     depends_on:
       redis:
@@ -109,6 +112,7 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  workspace-node-modules:
   cms-node-modules:
   api-node-modules:
   realtime-node-modules:

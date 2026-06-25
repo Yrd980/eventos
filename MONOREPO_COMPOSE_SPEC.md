@@ -9,7 +9,7 @@
 
 要求：
 
-- 前端、API、CMS、Realtime、共享包分层清晰
+- 前端、API、CMS 管理端、Realtime、共享包分层清晰
 - 本地开发可一键拉起依赖
 - 各服务可独立开发、独立启动、独立部署
 - `docker-compose` 只负责编排基础设施和服务依赖
@@ -21,7 +21,7 @@
 - 所有可复用类型、常量、契约放在共享包
 - 前端不直接引用后端私有实现
 - API 不依赖前端构建产物
-- CMS 只负责内容，不承担业务编排
+- CMS 管理端只负责内容，不承担业务编排
 - Realtime 只负责广播和订阅，不存放最终事实数据
 
 ### 禁止
@@ -38,7 +38,7 @@ eventos/
 ├── apps/
 │   ├── web-miniapp/          # Taro 微信小程序
 │   ├── api/                  # Bun + Hono API
-│   ├── cms/                  # Strapi CMS
+│   ├── cms/                  # TDesign React CMS admin
 │   └── realtime/             # uWebSockets.js 实时服务
 ├── packages/
 │   ├── contracts/            # API DTO / schema / event payload
@@ -110,7 +110,8 @@ eventos/
 
 技术：
 
-- Strapi
+- TDesign React + Vite
+- PostgreSQL
 
 ### `apps/realtime`
 
@@ -349,7 +350,7 @@ redis
 
 - `web-miniapp`：由 Taro 本地开发工具决定，不固定端口
 - `api`：`3000`
-- `cms`：`1337`
+- `cms`：`5174`
 - `realtime`：`3001`
 - `postgres`：`5432`
 - `redis`：`6379`

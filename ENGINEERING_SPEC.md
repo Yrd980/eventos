@@ -22,7 +22,7 @@ Wechat Mini Program
   -> PostgreSQL
   -> Redis
   -> uWebSockets.js
-  -> Strapi CMS
+  -> TDesign React CMS admin
 ```
 
 ## 3. 代码边界
@@ -41,7 +41,7 @@ Wechat Mini Program
 禁止：
 
 - 直接写数据库
-- 直接操作 Strapi 私有逻辑
+- 直接操作 CMS 私有逻辑
 - 在页面中堆业务规则
 
 ### 3.2 API
@@ -101,9 +101,9 @@ Wechat Mini Program
 
 ### 4.3 前端
 
-- Framework: `Taro + React + TypeScript`
+- Framework: `React + TypeScript`
 - State: `Zustand`
-- UI: `TDesign-miniprogram`
+- UI: `TDesign React`
 - Animation: `Lottie`
 
 ## 5. 数据库约束
