@@ -1,0 +1,11 @@
+{
+  "miniprogramRoot": "dist/",
+  "projectname": "eventos-web-miniapp",
+  "description": "Event OS mini program",
+  "appid": "touristappid",
+  "setting": {
+    "urlCheck": false
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.7.12"
+}
