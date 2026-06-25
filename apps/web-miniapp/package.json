@@ -1,0 +1,8 @@
+{
+  "name": "@eventos/web-miniapp",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"Taro app not initialized yet\"",
+    "typecheck": "echo \"skip\""
+  }
+}

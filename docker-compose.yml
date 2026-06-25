@@ -1,0 +1,114 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-eventos}
+      POSTGRES_USER: ${POSTGRES_USER:-eventos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eventos}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-eventos} -d ${POSTGRES_DB:-eventos}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cms:
+    image: node:20-alpine
+    working_dir: /workspace/apps/cms
+    command: sh -lc "corepack enable && bun install && bun run develop"
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${CMS_PORT:-1337}
+      DATABASE_CLIENT: postgres
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${POSTGRES_DB:-eventos}
+      DATABASE_USERNAME: ${POSTGRES_USER:-eventos}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-eventos}
+      NODE_ENV: development
+    ports:
+      - "${CMS_PORT:-1337}:1337"
+    volumes:
+      - ./:/workspace
+      - cms-node-modules:/workspace/apps/cms/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: oven/bun:1.3.14
+    working_dir: /workspace/apps/api
+    command: bun run dev
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: ${API_PORT:-3000}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-eventos}
+      POSTGRES_USER: ${POSTGRES_USER:-eventos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eventos}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - ./:/workspace
+      - api-node-modules:/workspace/apps/api/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  realtime:
+    image: oven/bun:1.3.14
+    working_dir: /workspace/apps/realtime
+    command: bun run dev
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: ${REALTIME_PORT:-3001}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "${REALTIME_PORT:-3001}:3001"
+    volumes:
+      - ./:/workspace
+      - realtime-node-modules:/workspace/apps/realtime/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  cms-node-modules:
+  api-node-modules:
+  realtime-node-modules:

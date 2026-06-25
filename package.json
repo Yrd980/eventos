@@ -1,0 +1,18 @@
+{
+  "name": "eventos",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd apps/api dev",
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:realtime": "bun run --cwd apps/realtime dev",
+    "dev:cms": "bun run --cwd apps/cms develop",
+    "dev:web": "bun run --cwd apps/web-miniapp dev",
+    "typecheck": "bunx tsc -b",
+    "lint": "bunx eslint .",
+    "format": "bunx prettier --write ."
+  }
+}

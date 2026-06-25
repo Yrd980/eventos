@@ -1,0 +1,8 @@
+{
+  "name": "@eventos/cms",
+  "private": true,
+  "scripts": {
+    "develop": "echo \"Strapi app not initialized yet\"",
+    "typecheck": "echo \"skip\""
+  }
+}

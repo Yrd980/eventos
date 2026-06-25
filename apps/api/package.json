@@ -1,0 +1,12 @@
+{
+  "name": "@eventos/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.8.5"
+  }
+}
