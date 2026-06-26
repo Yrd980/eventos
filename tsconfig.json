@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./apps/api" },
+    { "path": "./apps/cms" },
+    { "path": "./apps/realtime" },
+    { "path": "./apps/web-miniapp" }
+  ]
+}

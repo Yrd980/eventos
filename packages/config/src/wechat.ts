@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { DEFAULT_WECHAT_QR_HMAC_SECRET } from "./index";
+import { DEFAULT_WECHAT_QR_HMAC_SECRET, type WechatSecrets } from "./index";
 
 type SecretFile = {
   AppID?: string;

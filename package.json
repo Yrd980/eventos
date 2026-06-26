@@ -11,8 +11,12 @@
     "dev:realtime": "bun --filter @eventos/realtime dev",
     "dev:cms": "bun --filter @eventos/cms dev",
     "dev:web": "bun --filter @eventos/web-miniapp dev",
-    "typecheck": "bunx tsc -b",
+    "typecheck": "bun tsc -b",
     "lint": "bunx eslint .",
     "format": "bunx prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "typescript": "5.8.3"
   }
 }
