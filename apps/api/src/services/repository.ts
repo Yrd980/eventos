@@ -13,6 +13,7 @@ import type {
   QRPass,
   Registration,
   Session,
+  StaffGrant,
   Tenant,
   User,
 } from "@eventos/contracts";
@@ -229,6 +230,18 @@ function mapExpoBooth(row: typeof expoBooths.$inferSelect): ExpoBooth {
     logo_url: optional(row.logoUrl),
     status: row.status as ExpoBooth["status"],
     sort_order: row.sortOrder,
+  };
+}
+
+function mapStaffGrant(row: typeof staffGrants.$inferSelect): StaffGrant {
+  return {
+    id: row.id,
+    tenant_id: row.tenantId,
+    activity_id: row.activityId,
+    user_id: row.userId,
+    authing_user_id: row.authingUserId,
+    grant_source: "authing",
+    created_at: iso(row.createdAt),
   };
 }
 
@@ -793,6 +806,36 @@ export function createRepository(db: DbSession) {
     async hasStaffGrant(activityId: string, userId: string) {
       const rows = await db.select({ id: staffGrants.id }).from(staffGrants).where(and(eq(staffGrants.activityId, activityId), eq(staffGrants.userId, userId))).limit(1);
       return rows.length > 0;
+    },
+
+    async listStaffGrants(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(staffGrants)
+          .where(eq(staffGrants.activityId, activityId))
+          .orderBy(desc(staffGrants.createdAt), staffGrants.id)
+      ).map(mapStaffGrant);
+    },
+
+    async upsertStaffGrant(input: { id: string; tenantId: string; activityId: string; userId: string; authingUserId: string }) {
+      const rows = await db
+        .insert(staffGrants)
+        .values({
+          id: input.id,
+          tenantId: input.tenantId,
+          activityId: input.activityId,
+          userId: input.userId,
+          authingUserId: input.authingUserId,
+          grantSource: "authing",
+        })
+        .onConflictDoUpdate({
+          target: [staffGrants.activityId, staffGrants.userId],
+          set: { grantSource: sql`${staffGrants.grantSource}` },
+        })
+        .returning();
+
+      return mapStaffGrant(rows[0]);
     },
 
     async createCheckin(input: {

@@ -310,6 +310,42 @@ export async function createOperatorBlock(input: { repo: EventOsRepository; acto
   return block;
 }
 
+export async function grantOperatorStaff(input: { repo: EventOsRepository; actor: RequestActor; activityId: string; body: JsonRecord }) {
+  const { activity, tenant } = await requireOperatorActivity({
+    repo: input.repo,
+    actor: input.actor,
+    activityId: input.activityId,
+  });
+  const authingUserId = asString(input.body.authing_user_id, "authing_user_id");
+  const displayName = asOptionalString(input.body.display_name);
+  const avatarUrl = asOptionalString(input.body.avatar_url);
+  const staffUser = await input.repo.upsertUser({
+    id: createId("usr"),
+    authingUserId,
+    displayName,
+    avatarUrl,
+  });
+  const grant = await input.repo.upsertStaffGrant({
+    id: createId("sfg"),
+    tenantId: tenant.id,
+    activityId: activity.id,
+    userId: staffUser.id,
+    authingUserId,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "staff_grant.upserted",
+    resourceType: "staff_grant",
+    resourceId: grant.id,
+    metadata: { staff_user_id: staffUser.id, staff_authing_user_id: authingUserId },
+  });
+
+  return { grant, user: staffUser };
+}
+
 async function buildPublicationSnapshot(repo: EventOsRepository, activity: Activity) {
   const sessions = await repo.listSessions(activity.id);
   const pageConfigs = await repo.listPageConfigs(activity.id);

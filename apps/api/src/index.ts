@@ -12,6 +12,7 @@ import { requireActor } from "./services/identity";
 import {
   createOperatorActivity,
   createOperatorBlock,
+  grantOperatorStaff,
   createOperatorSession,
   listOperatorActivities,
   publishOperatorActivity,
@@ -270,6 +271,36 @@ app.post("/operator/activities/:activityId/blocks", async (c) =>
       idempotencyKey: requireIdempotencyKey(c),
       request: { activityId, body },
       execute: () => createOperatorBlock({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/activities/:activityId/staff-grants", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(await repo.listStaffGrants(activityId)));
+  }),
+);
+
+app.post("/operator/activities/:activityId/staff-grants", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = await readJsonObject(c);
+    const result = await runCommand({
+      repo,
+      commandName: "operator.staff_grant.upsert",
+      resourceType: "staff_grant",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => grantOperatorStaff({ repo, actor, activityId, body }),
     });
     return c.json(success(result));
   }),

@@ -330,21 +330,25 @@ export const idempotencyRecords = pgTable("idempotency_records", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
 
-export const staffGrants = pgTable("staff_grants", {
-  id: text("id").primaryKey(),
-  tenantId: text("tenant_id")
-    .notNull()
-    .references(() => tenants.id),
-  activityId: text("activity_id")
-    .notNull()
-    .references(() => activities.id),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id),
-  authingUserId: text("authing_user_id").notNull(),
-  grantSource: text("grant_source").notNull().default("authing"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const staffGrants = pgTable(
+  "staff_grants",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    activityId: text("activity_id")
+      .notNull()
+      .references(() => activities.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    authingUserId: text("authing_user_id").notNull(),
+    grantSource: text("grant_source").notNull().default("authing"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("staff_grants_activity_user_unique").on(table.activityId, table.userId)],
+);
 
 export const operatorGrants = pgTable("operator_grants", {
   id: text("id").primaryKey(),

@@ -299,6 +299,16 @@ export type CheckinAttempt = {
   created_at: ISODateTime;
 };
 
+export type StaffGrant = {
+  id: Id;
+  tenant_id: Id;
+  activity_id: Id;
+  user_id: Id;
+  authing_user_id: string;
+  grant_source: "authing";
+  created_at: ISODateTime;
+};
+
 export type ExpoBooth = {
   id: Id;
   activity_id: Id;

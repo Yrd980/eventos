@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { Button, Input, Layout, MessagePlugin, Select, Switch, Tag, Textarea, Typography } from 'tdesign-react'
-import type { Activity, ActivityPublication, PageConfig, Session } from '@eventos/contracts'
+import type { Activity, ActivityPublication, PageConfig, Session, StaffGrant, User } from '@eventos/contracts'
 import 'tdesign-react/es/style/index.css'
 import './styles.css'
 
 const { Header, Aside, Content } = Layout
 
 type ApiEnvelope<T> = { data: T; meta?: Record<string, unknown> } | { error: { code: string; message: string } }
+type StaffGrantResult = { grant: StaffGrant; user: User }
 
 const defaultApiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
 const idempotencyPrefix = () => `cms_${Date.now()}_${crypto.randomUUID()}`
@@ -56,6 +57,7 @@ function App() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [pageConfigs, setPageConfigs] = useState<PageConfig[]>([])
   const [publications, setPublications] = useState<ActivityPublication[]>([])
+  const [staffGrants, setStaffGrants] = useState<StaffGrant[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
   const selected = activities.find((activity) => activity.id === selectedId)
@@ -87,6 +89,10 @@ function App() {
     enabled: true,
     config: '{}',
   })
+  const [staffForm, setStaffForm] = useState({
+    authing_user_id: '',
+    display_name: '',
+  })
 
   useEffect(() => setActivityForm(draft), [draft])
 
@@ -115,19 +121,21 @@ function App() {
 
   async function loadActivityDetail(activityId: string) {
     const detail = await run(async () => {
-      const [activityRows, sessionRows, pageRows, publicationRows] = await Promise.all([
+      const [activityRows, sessionRows, pageRows, publicationRows, staffRows] = await Promise.all([
         apiRequest<Activity>({ path: `/operator/activities/${activityId}`, token, apiBase }),
         apiRequest<Session[]>({ path: `/operator/activities/${activityId}/sessions`, token, apiBase }),
         apiRequest<PageConfig[]>({ path: `/operator/activities/${activityId}/page-configs`, token, apiBase }),
         apiRequest<ActivityPublication[]>({ path: `/operator/activities/${activityId}/publications`, token, apiBase }),
+        apiRequest<StaffGrant[]>({ path: `/operator/activities/${activityId}/staff-grants`, token, apiBase }),
       ])
-      return { activityRows, sessionRows, pageRows, publicationRows }
+      return { activityRows, sessionRows, pageRows, publicationRows, staffRows }
     })
     if (detail) {
       setActivities((current) => current.map((item) => (item.id === detail.activityRows.id ? detail.activityRows : item)))
       setSessions(detail.sessionRows)
       setPageConfigs(detail.pageRows)
       setPublications(detail.publicationRows)
+      setStaffGrants(detail.staffRows)
     }
   }
 
@@ -268,6 +276,28 @@ function App() {
       }),
     )
     if (publication) void loadActivityDetail(selected.id)
+  }
+
+  async function upsertStaffGrant() {
+    if (!selected) return
+    const result = await run(() =>
+      apiRequest<StaffGrantResult>({
+        path: `/operator/activities/${selected.id}/staff-grants`,
+        method: 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body: {
+          authing_user_id: staffForm.authing_user_id,
+          display_name: staffForm.display_name,
+        },
+      }),
+    )
+    if (result) {
+      setStaffForm({ authing_user_id: '', display_name: '' })
+      void loadActivityDetail(selected.id)
+      void MessagePlugin.success('Staff grant saved')
+    }
   }
 
   return (
@@ -444,6 +474,35 @@ function App() {
                   <Input value={blockForm.sort_order} onChange={(value) => setBlockForm((form) => ({ ...form, sort_order: String(value) }))} />
                 </div>
                 <Textarea value={blockForm.config} onChange={(value) => setBlockForm((form) => ({ ...form, config: String(value) }))} autosize={{ minRows: 5, maxRows: 10 }} />
+              </section>
+
+              <section className='panel panel--split span-2'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Staff Grants</div>
+                    <div className='panel-title'>{staffGrants.length} Activity-scoped Staff</div>
+                  </div>
+                  <Button disabled={!selected} onClick={upsertStaffGrant}>
+                    Grant
+                  </Button>
+                </div>
+                <div className='form-grid'>
+                  <Input value={staffForm.authing_user_id} onChange={(value) => setStaffForm((form) => ({ ...form, authing_user_id: String(value) }))} placeholder='Authing user subject' />
+                  <Input value={staffForm.display_name} onChange={(value) => setStaffForm((form) => ({ ...form, display_name: String(value) }))} placeholder='Display name' />
+                </div>
+                <div className='feed-list compact'>
+                  {staffGrants.map((grant) => (
+                    <div key={grant.id} className='feed-row'>
+                      <div>
+                        <div className='feed-row__title'>{grant.authing_user_id}</div>
+                        <div className='feed-row__meta'>{grant.user_id} / {grant.created_at}</div>
+                      </div>
+                      <Tag theme='primary' variant='light'>
+                        Staff
+                      </Tag>
+                    </div>
+                  ))}
+                </div>
               </section>
 
               <section className='panel panel--split span-2'>
