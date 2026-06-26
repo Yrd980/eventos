@@ -7,6 +7,7 @@ import type {
   Checkin,
   CheckinAttempt,
   DomainErrorCode,
+  ExpoBooth,
   MyAgendaItem,
   PageConfig,
   QRPass,
@@ -24,6 +25,7 @@ import {
   checkinAttempts,
   checkins,
   idempotencyRecords,
+  expoBooths,
   myAgendaItems,
   blocks,
   operatorGrants,
@@ -215,6 +217,21 @@ function mapCheckin(row: typeof checkins.$inferSelect): Checkin {
   };
 }
 
+function mapExpoBooth(row: typeof expoBooths.$inferSelect): ExpoBooth {
+  return {
+    id: row.id,
+    activity_id: row.activityId,
+    sponsor_id: optional(row.sponsorId),
+    name: row.name,
+    description: optional(row.description),
+    category: optional(row.category),
+    location: optional(row.location),
+    logo_url: optional(row.logoUrl),
+    status: row.status as ExpoBooth["status"],
+    sort_order: row.sortOrder,
+  };
+}
+
 export function createRepository(db: DbSession) {
   return {
     async listActivities(input: { tenantCode?: string; limit: number; cursor?: string }) {
@@ -315,6 +332,16 @@ export function createRepository(db: DbSession) {
           .where(eq(sessions.activityId, activityId))
           .orderBy(sessions.startTime, sessions.sortOrder, sessions.id)
       ).map(mapSession);
+    },
+
+    async listExpoBooths(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(expoBooths)
+          .where(and(eq(expoBooths.activityId, activityId), eq(expoBooths.status, "visible")))
+          .orderBy(expoBooths.sortOrder, expoBooths.name)
+      ).map(mapExpoBooth);
     },
 
     async countScheduledSessions(activityId: string) {

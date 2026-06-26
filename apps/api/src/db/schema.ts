@@ -253,6 +253,21 @@ export const checkinAttempts = pgTable("checkin_attempts", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const expoBooths = pgTable("expo_booths", {
+  id: text("id").primaryKey(),
+  activityId: text("activity_id")
+    .notNull()
+    .references(() => activities.id),
+  sponsorId: text("sponsor_id"),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category"),
+  location: text("location"),
+  logoUrl: text("logo_url"),
+  status: text("status").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
 export const pageConfigs = pgTable(
   "page_configs",
   {

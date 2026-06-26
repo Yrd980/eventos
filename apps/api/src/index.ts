@@ -368,6 +368,14 @@ app.get("/activities/:activityId/sessions", async (c) =>
   }),
 );
 
+app.get("/activities/:activityId/expo-booths", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    await getVisibleActivity(repo, activityId);
+    return c.json(success(await repo.listExpoBooths(activityId)));
+  }),
+);
+
 app.get("/sessions/:sessionId", async (c) =>
   withRepo(async (repo) => {
     const session = await repo.getSession(c.req.param("sessionId"));

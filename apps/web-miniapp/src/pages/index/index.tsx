@@ -1,122 +1,123 @@
-import { useState } from 'react'
-import { Text, View } from '@tarojs/components'
+import { useEffect, useState } from 'react'
+import { Input, Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
+import type { Activity } from '@eventos/contracts'
+import { getApiBaseUrl, getAuthingToken, getStoredActivityId, loadActivities, loadActivity, register, setApiBaseUrl, setAuthingToken, setStoredActivityId } from '../../utils/api'
 import './index.css'
 
-const featuredSpeakers = [
-  {
-    name: '储瑞松',
-    role1: '亚马逊全球副总裁',
-    role2: '亚马逊云科技亚太区联席总裁',
-    cue: '企业生产级智能体开发部署指南',
-  },
-  {
-    name: '徐晓彬',
-    role1: '峰会主题演讲嘉宾',
-    role2: '生成式 AI 解决方案负责人',
-    cue: 'Agentic AI 在企业中的落地路径',
-  },
-]
-
 export default function Index() {
-  const [activeSpeaker, setActiveSpeaker] = useState(0)
+  const [activities, setActivities] = useState<Activity[]>([])
+  const [activity, setActivity] = useState<Activity>()
+  const [apiBase, setApiBase] = useState(getApiBaseUrl())
+  const [token, setToken] = useState(getAuthingToken())
+  const [status, setStatus] = useState('加载活动中')
 
-  const goSchedule = () => {
-    Taro.switchTab({ url: '/pages/schedule/index' })
+  async function load() {
+    try {
+      const storedId = getStoredActivityId()
+      if (storedId) {
+        const detail = await loadActivity(storedId)
+        setActivity(detail)
+        setStatus(detail.status === 'archived' ? '活动已归档，只读开放' : '活动已加载')
+        return
+      }
+      const rows = await loadActivities()
+      setActivities(rows)
+      setActivity(rows[0])
+      if (rows[0]) setStoredActivityId(rows[0].id)
+      setStatus(rows.length ? '请选择活动' : '暂无可访问活动')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error))
+    }
   }
 
-  const goAssistant = () => {
-    Taro.switchTab({ url: '/pages/assistant/index' })
-  }
+  useEffect(() => {
+    void load()
+  }, [])
 
-  const stopTap = (e: { stopPropagation: () => void }) => {
-    e.stopPropagation()
+  const goSchedule = () => Taro.switchTab({ url: '/pages/schedule/index' })
+  const goAssistant = () => Taro.switchTab({ url: '/pages/assistant/index' })
+
+  async function submitRegistration() {
+    if (!activity) return
+    if (!token) {
+      Taro.showToast({ title: '需要 Authing token', icon: 'none' })
+      return
+    }
+    try {
+      await register(activity.id)
+      Taro.showToast({ title: '报名已确认', icon: 'none' })
+      Taro.switchTab({ url: '/pages/me/index' })
+    } catch (error) {
+      Taro.showToast({ title: error instanceof Error ? error.message : String(error), icon: 'none' })
+    }
   }
 
   return (
     <View className='page page--home'>
       <View className='mini-topbar'>
-        <Text className='mini-topbar__back' onClick={goSchedule}>
-          ‹
-        </Text>
-        <Text className='mini-topbar__title'>首页</Text>
-        <View className='mini-topbar__menu'>
-          <Text>•••</Text>
-          <Text>—</Text>
-          <Text>◉</Text>
+        <Text className='mini-topbar__back' onClick={goSchedule}>日程</Text>
+        <Text className='mini-topbar__title'>Activity Home</Text>
+        <View className='mini-topbar__menu' onClick={goAssistant}>
+          <Text>AI</Text>
         </View>
       </View>
 
-      <View className='hero-split'>
-        <View className='hero-split__left'>
-          <Text className='brand'>亚马逊云科技</Text>
-          <Text className='brand brand--sub'>中国峰会</Text>
-          <Text className='quote'>“</Text>
-          <Text className='headline'>重磅发布</Text>
-          <Text className='headline headline--accent'>{featuredSpeakers[activeSpeaker].cue}</Text>
-
-          <View className='whitepaper'>
-            <View className='whitepaper__line' />
-            <Text className='whitepaper__text'>白皮书下载</Text>
-          </View>
-
-          <View
-            className='crowd-card'
-            onClick={() => {
-              setActiveSpeaker((value) => (value + 1) % featuredSpeakers.length)
-            }}
-          >
-            <Text className='crowd-card__text'>大会现场</Text>
-          </View>
-        </View>
-
+      <View className='config-panel'>
+        <Input value={apiBase} placeholder='API base URL' onInput={(event) => setApiBase(event.detail.value)} />
+        <Input value={token} placeholder='Authing bearer token' onInput={(event) => setToken(event.detail.value)} />
         <View
-          className='hero-split__right'
+          className='config-panel__button'
           onClick={() => {
-            setActiveSpeaker((value) => (value + 1) % featuredSpeakers.length)
+            setApiBaseUrl(apiBase)
+            setAuthingToken(token)
+            void load()
           }}
         >
-          <View className='speaker-card'>
-            <View className='speaker-card__image' />
-            <View className='speaker-card__footer'>
-              <Text className='speaker-card__name'>{featuredSpeakers[activeSpeaker].name}</Text>
-              <Text className='speaker-card__role'>{featuredSpeakers[activeSpeaker].role1}</Text>
-              <Text className='speaker-card__role'>{featuredSpeakers[activeSpeaker].role2}</Text>
-            </View>
-          </View>
-          <View
-            className='share-badge'
-            onClick={(e) => {
-              stopTap(e)
-              goAssistant()
-            }}
-          >
-            <Text className='share-badge__icon'>↗</Text>
-            <Text className='share-badge__text'>分享好友</Text>
-          </View>
-          <View className='dots'>
-            {featuredSpeakers.map((_, index) => (
-              <Text
-                key={index}
-                className={`dots__dot${index === activeSpeaker ? ' dots__dot--active' : ''}`}
-                onClick={(e) => {
-                  stopTap(e)
-                  setActiveSpeaker(index)
-                }}
-              />
-            ))}
-          </View>
+          保存并刷新
         </View>
       </View>
 
-      <View className='cta-card' onClick={goSchedule}>
-        <Text className='cta-card__button'>立即免费报名</Text>
+      {activities.length > 1 && (
+        <View className='activity-switcher'>
+          {activities.map((item) => (
+            <Text
+              key={item.id}
+              className={`activity-switcher__item${item.id === activity?.id ? ' activity-switcher__item--active' : ''}`}
+              onClick={() => {
+                setActivity(item)
+                setStoredActivityId(item.id)
+              }}
+            >
+              {item.name}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      <View className='activity-hero'>
+        <Text className='activity-hero__status'>{status}</Text>
+        <Text className='activity-hero__title'>{activity?.name ?? 'Event OS'}</Text>
+        <Text className='activity-hero__desc'>{activity?.description ?? '多租户活动平台'}</Text>
+        <Text className='activity-hero__meta'>{activity ? `${activity.start_time} / ${activity.venue.venue_name ?? activity.venue.city ?? activity.timezone}` : '等待活动数据'}</Text>
       </View>
 
-      <View className='ask-bar' onClick={goAssistant}>
-        <Text className='ask-bar__placeholder'>请帮我报名</Text>
-        <View className='ask-bar__send'>
-          <Text>↑</Text>
+      <View className='action-grid'>
+        <View className='action-card action-card--primary' onClick={submitRegistration}>
+          <Text className='action-card__title'>{activity?.status === 'archived' ? '查看报名' : '立即报名'}</Text>
+          <Text className='action-card__meta'>Confirmed Registration to QR Pass</Text>
+        </View>
+        <View className='action-card' onClick={goSchedule}>
+          <Text className='action-card__title'>Agenda</Text>
+          <Text className='action-card__meta'>浏览 Sessions 和 My Agenda</Text>
+        </View>
+        <View className='action-card' onClick={() => Taro.switchTab({ url: '/pages/expo/index' })}>
+          <Text className='action-card__title'>Expo</Text>
+          <Text className='action-card__meta'>强类型 Expo Booth</Text>
+        </View>
+        <View className='action-card' onClick={() => Taro.switchTab({ url: '/pages/me/index' })}>
+          <Text className='action-card__title'>Me</Text>
+          <Text className='action-card__meta'>QR Pass / Registration / My Agenda</Text>
         </View>
       </View>
     </View>
