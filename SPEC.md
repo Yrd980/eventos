@@ -31,6 +31,8 @@
 - 前端构建：`Vite 8`
 - 后端运行时：`Bun`
 - 后端框架：`Hono`
+- 数据访问：`Drizzle ORM`
+- 输入校验：`Zod`
 - CMS：`TDesign React 管理端`
 - 实时服务：`uWebSockets.js`
 - 缓存与实时态：`Redis`

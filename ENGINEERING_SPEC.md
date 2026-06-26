@@ -93,6 +93,8 @@ Wechat Mini Program
 
 - Runtime: `Bun`
 - Framework: `Hono`
+- Data access: `Drizzle ORM`
+- Validation: `Zod`
 - 输入输出: JSON
 - 鉴权: Authing identity + Event OS 本地 User 投影 + Tenant/Activity scoped permission
 - 响应: 成功 `{ data, meta? }`，失败 `{ error: { code, message, details?, trace_id? } }`

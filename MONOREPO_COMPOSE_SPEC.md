@@ -99,6 +99,8 @@ eventos/
 
 - Bun
 - Hono
+- Drizzle ORM
+- Zod
 
 ### `apps/cms`
 
