@@ -146,6 +146,24 @@ app.patch("/operator/activities/:activityId", async (c) =>
   }),
 );
 
+app.get("/operator/activities/:activityId", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const { activity } = await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(activity));
+  }),
+);
+
+app.get("/operator/activities/:activityId/sessions", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(await repo.listOperatorSessions(activityId)));
+  }),
+);
+
 app.post("/operator/activities/:activityId/sessions", async (c) =>
   withTransaction(async (repo) => {
     const activityId = c.req.param("activityId");
@@ -184,6 +202,15 @@ app.patch("/operator/sessions/:sessionId", async (c) =>
       execute: () => updateOperatorSession({ repo, actor, sessionId, body }),
     });
     return c.json(success(result));
+  }),
+);
+
+app.get("/operator/activities/:activityId/page-configs", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(await repo.listPageConfigs(activityId)));
   }),
 );
 

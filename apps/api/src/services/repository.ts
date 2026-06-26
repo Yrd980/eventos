@@ -307,6 +307,16 @@ export function createRepository(db: DbSession) {
       ).map(mapSession);
     },
 
+    async listOperatorSessions(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(sessions)
+          .where(eq(sessions.activityId, activityId))
+          .orderBy(sessions.startTime, sessions.sortOrder, sessions.id)
+      ).map(mapSession);
+    },
+
     async countScheduledSessions(activityId: string) {
       const rows = await db.select({ value: count() }).from(sessions).where(and(eq(sessions.activityId, activityId), eq(sessions.status, "scheduled")));
       return rows[0]?.value ?? 0;
