@@ -34,6 +34,7 @@ export function statusForCode(code: DomainErrorCode): number {
     case "STAFF_UNAUTHORIZED_FOR_ACTIVITY":
       return 403;
     case "ACTIVITY_NOT_FOUND":
+    case "EXPO_BOOTH_NOT_FOUND":
     case "SESSION_NOT_FOUND":
       return 404;
     case "IDEMPOTENCY_CONFLICT":

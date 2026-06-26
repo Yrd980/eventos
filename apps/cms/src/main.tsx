@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { Button, Input, Layout, MessagePlugin, Select, Switch, Tag, Textarea, Typography } from 'tdesign-react'
-import type { Activity, ActivityOrganizer, ActivityPublication, Organizer, PageConfig, Session, SessionSpeaker, Speaker, Sponsor, StaffGrant, User } from '@eventos/contracts'
+import type { Activity, ActivityOrganizer, ActivityPublication, ExpoBooth, Organizer, PageConfig, Session, SessionSpeaker, Speaker, Sponsor, StaffGrant, User } from '@eventos/contracts'
 import 'tdesign-react/es/style/index.css'
 import './styles.css'
 
@@ -61,6 +61,7 @@ function App() {
   const [staffGrants, setStaffGrants] = useState<StaffGrant[]>([])
   const [activityOrganizers, setActivityOrganizers] = useState<ActivityOrganizer[]>([])
   const [sessionSpeakers, setSessionSpeakers] = useState<SessionSpeaker[]>([])
+  const [expoBooths, setExpoBooths] = useState<ExpoBooth[]>([])
   const [organizers, setOrganizers] = useState<Organizer[]>([])
   const [sponsors, setSponsors] = useState<Sponsor[]>([])
   const [speakers, setSpeakers] = useState<Speaker[]>([])
@@ -104,6 +105,7 @@ function App() {
   const [speakerForm, setSpeakerForm] = useState({ name: '', title: '', organization: '' })
   const [activityOrganizerForm, setActivityOrganizerForm] = useState({ organizer_id: '', sort_order: '0' })
   const [sessionSpeakerForm, setSessionSpeakerForm] = useState({ session_id: '', speaker_id: '', role: 'speaker', sort_order: '0' })
+  const [expoBoothForm, setExpoBoothForm] = useState({ name: '', sponsor_id: '', category: '', location: '', sort_order: '0', status: 'visible' })
 
   useEffect(() => setActivityForm(draft), [draft])
 
@@ -148,16 +150,17 @@ function App() {
 
   async function loadActivityDetail(activityId: string) {
     const detail = await run(async () => {
-      const [activityRows, sessionRows, pageRows, publicationRows, staffRows, activityOrganizerRows] = await Promise.all([
+      const [activityRows, sessionRows, pageRows, publicationRows, staffRows, activityOrganizerRows, expoBoothRows] = await Promise.all([
         apiRequest<Activity>({ path: `/operator/activities/${activityId}`, token, apiBase }),
         apiRequest<Session[]>({ path: `/operator/activities/${activityId}/sessions`, token, apiBase }),
         apiRequest<PageConfig[]>({ path: `/operator/activities/${activityId}/page-configs`, token, apiBase }),
         apiRequest<ActivityPublication[]>({ path: `/operator/activities/${activityId}/publications`, token, apiBase }),
         apiRequest<StaffGrant[]>({ path: `/operator/activities/${activityId}/staff-grants`, token, apiBase }),
         apiRequest<ActivityOrganizer[]>({ path: `/operator/activities/${activityId}/organizers`, token, apiBase }),
+        apiRequest<ExpoBooth[]>({ path: `/operator/activities/${activityId}/expo-booths`, token, apiBase }),
       ])
       const speakerRows = (await Promise.all(sessionRows.map((session) => apiRequest<SessionSpeaker[]>({ path: `/operator/sessions/${session.id}/speakers`, token, apiBase })))).flat()
-      return { activityRows, sessionRows, pageRows, publicationRows, staffRows, activityOrganizerRows, speakerRows }
+      return { activityRows, sessionRows, pageRows, publicationRows, staffRows, activityOrganizerRows, expoBoothRows, speakerRows }
     })
     if (detail) {
       setActivities((current) => current.map((item) => (item.id === detail.activityRows.id ? detail.activityRows : item)))
@@ -166,6 +169,7 @@ function App() {
       setPublications(detail.publicationRows)
       setStaffGrants(detail.staffRows)
       setActivityOrganizers(detail.activityOrganizerRows)
+      setExpoBooths(detail.expoBoothRows)
       setSessionSpeakers(detail.speakerRows)
       setSessionSpeakerForm((form) => ({ ...form, session_id: form.session_id || detail.sessionRows[0]?.id || '' }))
     }
@@ -401,6 +405,48 @@ function App() {
     }
   }
 
+  async function createExpoBooth() {
+    if (!selected) return
+    const booth = await run(() =>
+      apiRequest<ExpoBooth>({
+        path: `/operator/activities/${selected.id}/expo-booths`,
+        method: 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body: {
+          name: expoBoothForm.name,
+          sponsor_id: expoBoothForm.sponsor_id || undefined,
+          category: expoBoothForm.category || undefined,
+          location: expoBoothForm.location || undefined,
+          sort_order: Number(expoBoothForm.sort_order),
+          status: expoBoothForm.status,
+        },
+      }),
+    )
+    if (booth) {
+      setExpoBoothForm({ name: '', sponsor_id: '', category: '', location: '', sort_order: '0', status: 'visible' })
+      void loadActivityDetail(selected.id)
+    }
+  }
+
+  async function updateExpoBooth(booth: ExpoBooth, body: Record<string, unknown>) {
+    if (!selected) return
+    const updated = await run(() =>
+      apiRequest<ExpoBooth>({
+        path: `/operator/expo-booths/${booth.id}`,
+        method: 'PATCH',
+        token,
+        apiBase,
+        idempotency: true,
+        body,
+      }),
+    )
+    if (updated) {
+      setExpoBooths((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+    }
+  }
+
   return (
     <Layout className='app-shell'>
       <Aside className='sidebar'>
@@ -624,6 +670,54 @@ function App() {
                       <Tag variant='light'>Sponsor</Tag>
                     </div>
                   ))}
+                </div>
+              </section>
+
+              <section className='panel panel--split'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Expo Booths</div>
+                    <div className='panel-title'>{expoBooths.length} Activity booths</div>
+                  </div>
+                  <Button disabled={!selected || !expoBoothForm.name} onClick={createExpoBooth}>Add</Button>
+                </div>
+                <Input value={expoBoothForm.name} onChange={(value) => setExpoBoothForm((form) => ({ ...form, name: String(value) }))} placeholder='Booth name' />
+                <Select value={expoBoothForm.sponsor_id} onChange={(value) => setExpoBoothForm((form) => ({ ...form, sponsor_id: String(value) }))} options={[
+                  { label: 'No Sponsor', value: '' },
+                  ...sponsors.map((sponsor) => ({ label: sponsor.name, value: sponsor.id })),
+                ]} />
+                <div className='form-grid'>
+                  <Input value={expoBoothForm.category} onChange={(value) => setExpoBoothForm((form) => ({ ...form, category: String(value) }))} placeholder='Category' />
+                  <Input value={expoBoothForm.location} onChange={(value) => setExpoBoothForm((form) => ({ ...form, location: String(value) }))} placeholder='Location' />
+                </div>
+                <div className='form-grid'>
+                  <Input value={expoBoothForm.sort_order} onChange={(value) => setExpoBoothForm((form) => ({ ...form, sort_order: String(value) }))} placeholder='Sort order' />
+                  <Select value={expoBoothForm.status} onChange={(value) => setExpoBoothForm((form) => ({ ...form, status: String(value) }))} options={[
+                    { label: 'Visible', value: 'visible' },
+                    { label: 'Hidden', value: 'hidden' },
+                  ]} />
+                </div>
+                <div className='feed-list compact'>
+                  {expoBooths.map((booth) => {
+                    const sponsor = sponsors.find((item) => item.id === booth.sponsor_id)
+                    return (
+                      <div key={booth.id} className='feed-row'>
+                        <div>
+                          <div className='feed-row__title'>{booth.name}</div>
+                          <div className='feed-row__meta'>{sponsor?.name ?? 'No Sponsor'} / {booth.category ?? 'Uncategorized'} / {booth.location ?? 'No location'} / Sort {booth.sort_order}</div>
+                        </div>
+                        <div className='row-actions'>
+                          <Select className='row-select' value={booth.sponsor_id ?? ''} onChange={(value) => updateExpoBooth(booth, { sponsor_id: String(value) || null })} options={[
+                            { label: 'No Sponsor', value: '' },
+                            ...sponsors.map((item) => ({ label: item.name, value: item.id })),
+                          ]} />
+                          <Button variant='outline' onClick={() => updateExpoBooth(booth, { status: booth.status === 'visible' ? 'hidden' : 'visible' })}>
+                            {booth.status === 'visible' ? 'Hide' : 'Show'}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </section>
 

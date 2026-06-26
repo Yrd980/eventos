@@ -12,6 +12,7 @@ import { requireActor } from "./services/identity";
 import {
   createOperatorActivity,
   createOperatorBlock,
+  createOperatorExpoBooth,
   createOperatorTenantResource,
   grantOperatorStaff,
   createOperatorSession,
@@ -21,6 +22,7 @@ import {
   requireOperatorActivity,
   rollbackOperatorActivity,
   updateOperatorActivity,
+  updateOperatorExpoBooth,
   updateOperatorSession,
   updateOperatorTenantResource,
   upsertOperatorActivityOrganizer,
@@ -64,6 +66,26 @@ const sessionSpeakerBodySchema = z.object({
   title_override: z.string().min(1).optional(),
   bio_override: z.string().min(1).optional(),
 });
+
+const expoBoothCreateBodySchema = z.object({
+  sponsor_id: z.string().min(1).optional(),
+  name: z.string().min(1),
+  description: z.string().min(1).optional(),
+  category: z.string().min(1).optional(),
+  location: z.string().min(1).optional(),
+  logo_url: z.string().min(1).optional(),
+  status: z.enum(["visible", "hidden"]).default("visible"),
+  sort_order: z.number().int().min(0).default(0),
+});
+
+const expoBoothUpdateBodySchema = expoBoothCreateBodySchema
+  .extend({
+    sponsor_id: z.string().min(1).nullable().optional(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "At least one field is required",
+  });
 
 function parseJsonBody<T>(schema: z.ZodType<T>, body: Record<string, unknown>) {
   const result = schema.safeParse(body);
@@ -278,6 +300,56 @@ app.post("/operator/activities/:activityId/organizers", async (c) =>
       idempotencyKey: requireIdempotencyKey(c),
       request: { activityId, body },
       execute: () => upsertOperatorActivityOrganizer({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/activities/:activityId/expo-booths", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(await repo.listOperatorExpoBooths(activityId)));
+  }),
+);
+
+app.post("/operator/activities/:activityId/expo-booths", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(expoBoothCreateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.expo_booth.create",
+      resourceType: "expo_booth",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => createOperatorExpoBooth({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.patch("/operator/expo-booths/:expoBoothId", async (c) =>
+  withTransaction(async (repo) => {
+    const expoBoothId = c.req.param("expoBoothId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(expoBoothUpdateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.expo_booth.update",
+      resourceType: "expo_booth",
+      resourceId: expoBoothId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { expoBoothId, body },
+      execute: () => updateOperatorExpoBooth({ repo, actor, expoBoothId, body }),
     });
     return c.json(success(result));
   }),

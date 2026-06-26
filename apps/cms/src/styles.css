@@ -305,6 +305,17 @@ body {
   font-size: 12px;
 }
 
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.row-select {
+  width: 180px;
+}
+
 .span-2 {
   grid-column: span 2;
 }

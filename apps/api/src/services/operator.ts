@@ -1,4 +1,4 @@
-import type { Activity, Block, BusinessResourceType, PageConfig, Session } from "@eventos/contracts";
+import type { Activity, Block, BusinessResourceType, ExpoBooth, PageConfig, Session } from "@eventos/contracts";
 import type { RequestActor } from "../auth/authing";
 import { DomainError } from "../http/envelope";
 import { createId, stableHash } from "./ids";
@@ -532,12 +532,125 @@ export async function upsertOperatorSessionSpeaker(input: {
   return link;
 }
 
+async function assertSponsorTenantBoundary(input: { repo: EventOsRepository; sponsorId?: string | null; tenantId: string }) {
+  if (!input.sponsorId) {
+    return undefined;
+  }
+
+  const sponsor = await input.repo.getSponsor(input.sponsorId);
+  if (!sponsor || sponsor.tenant_id !== input.tenantId) {
+    throw new DomainError("TENANT_MISMATCH", "Sponsor belongs to a different Tenant or was not found", { status: 404 });
+  }
+
+  return sponsor;
+}
+
+export async function createOperatorExpoBooth(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  activityId: string;
+  body: {
+    sponsor_id?: string | null;
+    name: string;
+    description?: string;
+    category?: string;
+    location?: string;
+    logo_url?: string;
+    status: ExpoBooth["status"];
+    sort_order: number;
+  };
+}) {
+  const { activity, tenant } = await requireOperatorActivity({
+    repo: input.repo,
+    actor: input.actor,
+    activityId: input.activityId,
+  });
+  const sponsor = await assertSponsorTenantBoundary({ repo: input.repo, tenantId: tenant.id, sponsorId: input.body.sponsor_id });
+  const booth = await input.repo.createExpoBooth({
+    id: createId("exp"),
+    activityId: activity.id,
+    sponsorId: sponsor?.id,
+    name: input.body.name,
+    description: input.body.description,
+    category: input.body.category,
+    location: input.body.location,
+    logoUrl: input.body.logo_url,
+    status: input.body.status,
+    sortOrder: input.body.sort_order,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "expo_booth.created",
+    resourceType: "expo_booth",
+    resourceId: booth.id,
+    metadata: { sponsor_id: sponsor?.id },
+  });
+
+  return booth;
+}
+
+export async function updateOperatorExpoBooth(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  expoBoothId: string;
+  body: {
+    sponsor_id?: string | null;
+    name?: string;
+    description?: string;
+    category?: string;
+    location?: string;
+    logo_url?: string;
+    status?: ExpoBooth["status"];
+    sort_order?: number;
+  };
+}) {
+  const existing = await input.repo.getExpoBooth(input.expoBoothId);
+  if (!existing) {
+    throw new DomainError("EXPO_BOOTH_NOT_FOUND", "Expo Booth was not found", { status: 404 });
+  }
+  const { activity, tenant } = await requireOperatorActivity({
+    repo: input.repo,
+    actor: input.actor,
+    activityId: existing.activity_id,
+  });
+  const hasSponsorUpdate = Object.hasOwn(input.body, "sponsor_id");
+  const sponsor = await assertSponsorTenantBoundary({ repo: input.repo, tenantId: tenant.id, sponsorId: input.body.sponsor_id });
+  const booth = await input.repo.updateExpoBooth({
+    id: input.expoBoothId,
+    sponsorId: hasSponsorUpdate ? (sponsor?.id ?? null) : undefined,
+    name: input.body.name,
+    description: input.body.description,
+    category: input.body.category,
+    location: input.body.location,
+    logoUrl: input.body.logo_url,
+    status: input.body.status,
+    sortOrder: input.body.sort_order,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "expo_booth.updated",
+    resourceType: "expo_booth",
+    resourceId: input.expoBoothId,
+    metadata: { sponsor_id: hasSponsorUpdate ? (sponsor?.id ?? null) : existing.sponsor_id },
+  });
+
+  return booth;
+}
+
 async function buildPublicationSnapshot(repo: EventOsRepository, activity: Activity) {
   const sessions = await repo.listSessions(activity.id);
+  const expoBooths = await repo.listExpoBooths(activity.id);
   const pageConfigs = await repo.listPageConfigs(activity.id);
   return {
     activity,
     sessions,
+    expo_booths: expoBooths,
     page_configs: pageConfigs,
     generated_at: new Date().toISOString(),
   };

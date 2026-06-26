@@ -407,6 +407,10 @@ export function createRepository(db: DbSession) {
       return (await db.select().from(sponsors).where(eq(sponsors.tenantId, tenantId)).orderBy(desc(sponsors.createdAt), sponsors.id)).map(mapSponsor);
     },
 
+    async getSponsor(sponsorId: string) {
+      return first((await db.select().from(sponsors).where(eq(sponsors.id, sponsorId)).limit(1)).map(mapSponsor));
+    },
+
     async createSponsor(input: { id: string; tenantId: string; name: string; logoUrl?: string; description?: string; websiteUrl?: string }) {
       const rows = await db
         .insert(sponsors)
@@ -555,6 +559,78 @@ export function createRepository(db: DbSession) {
           .where(and(eq(expoBooths.activityId, activityId), eq(expoBooths.status, "visible")))
           .orderBy(expoBooths.sortOrder, expoBooths.name)
       ).map(mapExpoBooth);
+    },
+
+    async listOperatorExpoBooths(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(expoBooths)
+          .where(eq(expoBooths.activityId, activityId))
+          .orderBy(expoBooths.sortOrder, expoBooths.name, expoBooths.id)
+      ).map(mapExpoBooth);
+    },
+
+    async getExpoBooth(expoBoothId: string) {
+      return first((await db.select().from(expoBooths).where(eq(expoBooths.id, expoBoothId)).limit(1)).map(mapExpoBooth));
+    },
+
+    async createExpoBooth(input: {
+      id: string;
+      activityId: string;
+      sponsorId?: string;
+      name: string;
+      description?: string;
+      category?: string;
+      location?: string;
+      logoUrl?: string;
+      status: ExpoBooth["status"];
+      sortOrder: number;
+    }) {
+      const rows = await db
+        .insert(expoBooths)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          sponsorId: input.sponsorId,
+          name: input.name,
+          description: input.description,
+          category: input.category,
+          location: input.location,
+          logoUrl: input.logoUrl,
+          status: input.status,
+          sortOrder: input.sortOrder,
+        })
+        .returning();
+      return mapExpoBooth(rows[0]);
+    },
+
+    async updateExpoBooth(input: {
+      id: string;
+      sponsorId?: string | null;
+      name?: string;
+      description?: string;
+      category?: string;
+      location?: string;
+      logoUrl?: string;
+      status?: ExpoBooth["status"];
+      sortOrder?: number;
+    }) {
+      const rows = await db
+        .update(expoBooths)
+        .set({
+          sponsorId: input.sponsorId === undefined ? undefined : input.sponsorId,
+          name: input.name,
+          description: input.description,
+          category: input.category,
+          location: input.location,
+          logoUrl: input.logoUrl,
+          status: input.status,
+          sortOrder: input.sortOrder,
+        })
+        .where(eq(expoBooths.id, input.id))
+        .returning();
+      return first(rows.map(mapExpoBooth));
     },
 
     async countScheduledSessions(activityId: string) {
