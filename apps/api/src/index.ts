@@ -12,14 +12,17 @@ import { requireActor } from "./services/identity";
 import {
   createOperatorActivity,
   createOperatorBlock,
+  createOperatorTenantResource,
   grantOperatorStaff,
   createOperatorSession,
   listOperatorActivities,
+  listOperatorTenantResources,
   publishOperatorActivity,
   requireOperatorActivity,
   rollbackOperatorActivity,
   updateOperatorActivity,
   updateOperatorSession,
+  updateOperatorTenantResource,
   upsertOperatorPageConfig,
 } from "./services/operator";
 import {
@@ -126,6 +129,57 @@ app.get("/operator/activities", async (c) =>
     return c.json(success(page, { limit, has_more: rows.length > limit, next_cursor: next, tenant_id: tenant.id }));
   }),
 );
+
+function operatorTenantResourceRoutes(resourceType: "organizer" | "sponsor" | "speaker", path: string) {
+  app.get(path, async (c) =>
+    withRepo(async (repo) => {
+      const actor = await actorFromRequest(repo, c.req.header("authorization"));
+      return c.json(success(await listOperatorTenantResources({ repo, actor, resourceType })));
+    }),
+  );
+
+  app.post(path, async (c) =>
+    withTransaction(async (repo) => {
+      const actor = await actorFromRequest(repo, c.req.header("authorization"));
+      const body = await readJsonObject(c);
+      const result = await runCommand({
+        repo,
+        commandName: `operator.${resourceType}.create`,
+        resourceType,
+        actorUserId: actor.user.id,
+        actorAuthingUserId: actor.principal.authing_user_id,
+        idempotencyKey: requireIdempotencyKey(c),
+        request: body,
+        execute: () => createOperatorTenantResource({ repo, actor, resourceType, body }),
+      });
+      return c.json(success(result));
+    }),
+  );
+
+  app.patch(`${path}/:resourceId`, async (c) =>
+    withTransaction(async (repo) => {
+      const resourceId = c.req.param("resourceId");
+      const actor = await actorFromRequest(repo, c.req.header("authorization"));
+      const body = await readJsonObject(c);
+      const result = await runCommand({
+        repo,
+        commandName: `operator.${resourceType}.update`,
+        resourceType,
+        resourceId,
+        actorUserId: actor.user.id,
+        actorAuthingUserId: actor.principal.authing_user_id,
+        idempotencyKey: requireIdempotencyKey(c),
+        request: { resourceId, body },
+        execute: () => updateOperatorTenantResource({ repo, actor, resourceType, resourceId, body }),
+      });
+      return c.json(success(result));
+    }),
+  );
+}
+
+operatorTenantResourceRoutes("organizer", "/operator/organizers");
+operatorTenantResourceRoutes("sponsor", "/operator/sponsors");
+operatorTenantResourceRoutes("speaker", "/operator/speakers");
 
 app.post("/operator/activities", async (c) =>
   withTransaction(async (repo) => {

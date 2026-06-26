@@ -1,4 +1,4 @@
-import type { Activity, Block, PageConfig, Session } from "@eventos/contracts";
+import type { Activity, Block, BusinessResourceType, PageConfig, Session } from "@eventos/contracts";
 import type { RequestActor } from "../auth/authing";
 import { DomainError } from "../http/envelope";
 import { createId, stableHash } from "./ids";
@@ -106,6 +106,115 @@ export async function listOperatorActivities(input: { repo: EventOsRepository; a
   const tenant = await requireTenantOperator({ repo: input.repo, actor: input.actor });
   const rows = await input.repo.listTenantActivities({ tenantId: tenant.id, limit: input.limit, cursor: input.cursor });
   return { tenant, rows };
+}
+
+export async function listOperatorTenantResources(input: { repo: EventOsRepository; actor: RequestActor; resourceType: "organizer" | "sponsor" | "speaker" }) {
+  const tenant = await requireTenantOperator({ repo: input.repo, actor: input.actor });
+  if (input.resourceType === "organizer") {
+    return input.repo.listOrganizers(tenant.id);
+  }
+  if (input.resourceType === "sponsor") {
+    return input.repo.listSponsors(tenant.id);
+  }
+  return input.repo.listSpeakers(tenant.id);
+}
+
+export async function createOperatorTenantResource(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  resourceType: "organizer" | "sponsor" | "speaker";
+  body: JsonRecord;
+}) {
+  const tenant = await requireTenantOperator({ repo: input.repo, actor: input.actor });
+  const resource =
+    input.resourceType === "organizer"
+      ? await input.repo.createOrganizer({
+          id: createId("org"),
+          tenantId: tenant.id,
+          name: asString(input.body.name, "name"),
+          logoUrl: asOptionalString(input.body.logo_url),
+          description: asOptionalString(input.body.description),
+          websiteUrl: asOptionalString(input.body.website_url),
+          contact: asOptionalString(input.body.contact),
+        })
+      : input.resourceType === "sponsor"
+        ? await input.repo.createSponsor({
+            id: createId("spn"),
+            tenantId: tenant.id,
+            name: asString(input.body.name, "name"),
+            logoUrl: asOptionalString(input.body.logo_url),
+            description: asOptionalString(input.body.description),
+            websiteUrl: asOptionalString(input.body.website_url),
+          })
+        : await input.repo.createSpeaker({
+            id: createId("spk"),
+            tenantId: tenant.id,
+            name: asString(input.body.name, "name"),
+            title: asOptionalString(input.body.title),
+            bio: asOptionalString(input.body.bio),
+            avatarUrl: asOptionalString(input.body.avatar_url),
+            organization: asOptionalString(input.body.organization),
+          });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: `${input.resourceType}.created`,
+    resourceType: input.resourceType,
+    resourceId: resource.id,
+  });
+
+  return resource;
+}
+
+export async function updateOperatorTenantResource(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  resourceType: "organizer" | "sponsor" | "speaker";
+  resourceId: string;
+  body: JsonRecord;
+}) {
+  const tenant = await requireTenantOperator({ repo: input.repo, actor: input.actor });
+  const resource =
+    input.resourceType === "organizer"
+      ? await input.repo.updateOrganizer({
+          id: input.resourceId,
+          name: input.body.name === undefined ? undefined : asString(input.body.name, "name"),
+          logoUrl: asOptionalString(input.body.logo_url),
+          description: asOptionalString(input.body.description),
+          websiteUrl: asOptionalString(input.body.website_url),
+          contact: asOptionalString(input.body.contact),
+        })
+      : input.resourceType === "sponsor"
+        ? await input.repo.updateSponsor({
+            id: input.resourceId,
+            name: input.body.name === undefined ? undefined : asString(input.body.name, "name"),
+            logoUrl: asOptionalString(input.body.logo_url),
+            description: asOptionalString(input.body.description),
+            websiteUrl: asOptionalString(input.body.website_url),
+          })
+        : await input.repo.updateSpeaker({
+            id: input.resourceId,
+            name: input.body.name === undefined ? undefined : asString(input.body.name, "name"),
+            title: asOptionalString(input.body.title),
+            bio: asOptionalString(input.body.bio),
+            avatarUrl: asOptionalString(input.body.avatar_url),
+            organization: asOptionalString(input.body.organization),
+          });
+
+  if (!resource || resource.tenant_id !== tenant.id) {
+    throw new DomainError("TENANT_MISMATCH", "Resource belongs to a different Tenant or was not found", { status: 404 });
+  }
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: `${input.resourceType}.updated`,
+    resourceType: input.resourceType as BusinessResourceType,
+    resourceId: resource.id,
+  });
+
+  return resource;
 }
 
 export async function createOperatorActivity(input: { repo: EventOsRepository; actor: RequestActor; body: JsonRecord }) {

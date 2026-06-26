@@ -43,6 +43,31 @@ export const activityTemplates = pgTable(
   (table) => [unique("activity_templates_tenant_key_unique").on(table.tenantId, table.templateKey)],
 );
 
+export const organizers = pgTable("organizers", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenants.id),
+  name: text("name").notNull(),
+  logoUrl: text("logo_url"),
+  description: text("description"),
+  websiteUrl: text("website_url"),
+  contact: text("contact"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const sponsors = pgTable("sponsors", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenants.id),
+  name: text("name").notNull(),
+  logoUrl: text("logo_url"),
+  description: text("description"),
+  websiteUrl: text("website_url"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const activities = pgTable("activities", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id")

@@ -9,10 +9,13 @@ import type {
   DomainErrorCode,
   ExpoBooth,
   MyAgendaItem,
+  Organizer,
   PageConfig,
   QRPass,
   Registration,
   Session,
+  Speaker,
+  Sponsor,
   StaffGrant,
   Tenant,
   User,
@@ -30,12 +33,15 @@ import {
   myAgendaItems,
   blocks,
   operatorGrants,
+  organizers,
   pageConfigs,
   participants,
   qrPasses,
   registrations,
   sessions,
   sessionTracks,
+  speakers,
+  sponsors,
   staffGrants,
   tenants,
   users,
@@ -104,6 +110,44 @@ function mapActivity(row: typeof activities.$inferSelect): Activity {
     theme: optional(row.theme as Activity["theme"] | null),
     created_at: iso(row.createdAt),
     updated_at: iso(row.updatedAt),
+  };
+}
+
+function mapOrganizer(row: typeof organizers.$inferSelect): Organizer {
+  return {
+    id: row.id,
+    tenant_id: row.tenantId,
+    name: row.name,
+    logo_url: optional(row.logoUrl),
+    description: optional(row.description),
+    website_url: optional(row.websiteUrl),
+    contact: optional(row.contact),
+    created_at: iso(row.createdAt),
+  };
+}
+
+function mapSponsor(row: typeof sponsors.$inferSelect): Sponsor {
+  return {
+    id: row.id,
+    tenant_id: row.tenantId,
+    name: row.name,
+    logo_url: optional(row.logoUrl),
+    description: optional(row.description),
+    website_url: optional(row.websiteUrl),
+    created_at: iso(row.createdAt),
+  };
+}
+
+function mapSpeaker(row: typeof speakers.$inferSelect): Speaker {
+  return {
+    id: row.id,
+    tenant_id: row.tenantId,
+    name: row.name,
+    title: optional(row.title),
+    bio: optional(row.bio),
+    avatar_url: optional(row.avatarUrl),
+    organization: optional(row.organization),
+    created_at: iso(row.createdAt),
   };
 }
 
@@ -295,6 +339,109 @@ export function createRepository(db: DbSession) {
 
     async getTenantByAuthingOrgId(authingOrgId: string) {
       return first((await db.select().from(tenants).where(eq(tenants.authingOrgId, authingOrgId)).limit(1)).map(mapTenant));
+    },
+
+    async listOrganizers(tenantId: string) {
+      return (await db.select().from(organizers).where(eq(organizers.tenantId, tenantId)).orderBy(desc(organizers.createdAt), organizers.id)).map(mapOrganizer);
+    },
+
+    async createOrganizer(input: { id: string; tenantId: string; name: string; logoUrl?: string; description?: string; websiteUrl?: string; contact?: string }) {
+      const rows = await db
+        .insert(organizers)
+        .values({
+          id: input.id,
+          tenantId: input.tenantId,
+          name: input.name,
+          logoUrl: input.logoUrl,
+          description: input.description,
+          websiteUrl: input.websiteUrl,
+          contact: input.contact,
+        })
+        .returning();
+      return mapOrganizer(rows[0]);
+    },
+
+    async updateOrganizer(input: { id: string; name?: string; logoUrl?: string; description?: string; websiteUrl?: string; contact?: string }) {
+      const rows = await db
+        .update(organizers)
+        .set({
+          name: input.name,
+          logoUrl: input.logoUrl,
+          description: input.description,
+          websiteUrl: input.websiteUrl,
+          contact: input.contact,
+        })
+        .where(eq(organizers.id, input.id))
+        .returning();
+      return first(rows.map(mapOrganizer));
+    },
+
+    async listSponsors(tenantId: string) {
+      return (await db.select().from(sponsors).where(eq(sponsors.tenantId, tenantId)).orderBy(desc(sponsors.createdAt), sponsors.id)).map(mapSponsor);
+    },
+
+    async createSponsor(input: { id: string; tenantId: string; name: string; logoUrl?: string; description?: string; websiteUrl?: string }) {
+      const rows = await db
+        .insert(sponsors)
+        .values({
+          id: input.id,
+          tenantId: input.tenantId,
+          name: input.name,
+          logoUrl: input.logoUrl,
+          description: input.description,
+          websiteUrl: input.websiteUrl,
+        })
+        .returning();
+      return mapSponsor(rows[0]);
+    },
+
+    async updateSponsor(input: { id: string; name?: string; logoUrl?: string; description?: string; websiteUrl?: string }) {
+      const rows = await db
+        .update(sponsors)
+        .set({
+          name: input.name,
+          logoUrl: input.logoUrl,
+          description: input.description,
+          websiteUrl: input.websiteUrl,
+        })
+        .where(eq(sponsors.id, input.id))
+        .returning();
+      return first(rows.map(mapSponsor));
+    },
+
+    async listSpeakers(tenantId: string) {
+      return (await db.select().from(speakers).where(eq(speakers.tenantId, tenantId)).orderBy(desc(speakers.createdAt), speakers.id)).map(mapSpeaker);
+    },
+
+    async createSpeaker(input: { id: string; tenantId: string; name: string; title?: string; bio?: string; avatarUrl?: string; organization?: string }) {
+      const rows = await db
+        .insert(speakers)
+        .values({
+          id: input.id,
+          tenantId: input.tenantId,
+          name: input.name,
+          title: input.title,
+          bio: input.bio,
+          avatarUrl: input.avatarUrl,
+          organization: input.organization,
+        })
+        .returning();
+      return mapSpeaker(rows[0]);
+    },
+
+    async updateSpeaker(input: { id: string; name?: string; title?: string; bio?: string; avatarUrl?: string; organization?: string }) {
+      const rows = await db
+        .update(speakers)
+        .set({
+          name: input.name,
+          title: input.title,
+          bio: input.bio,
+          avatarUrl: input.avatarUrl,
+          organization: input.organization,
+        })
+        .where(eq(speakers.id, input.id))
+        .returning();
+      return first(rows.map(mapSpeaker));
     },
 
     async hasOperatorGrant(input: { tenantId: string; userId: string; activityId?: string }) {

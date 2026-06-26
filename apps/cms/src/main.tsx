@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { Button, Input, Layout, MessagePlugin, Select, Switch, Tag, Textarea, Typography } from 'tdesign-react'
-import type { Activity, ActivityPublication, PageConfig, Session, StaffGrant, User } from '@eventos/contracts'
+import type { Activity, ActivityPublication, Organizer, PageConfig, Session, Speaker, Sponsor, StaffGrant, User } from '@eventos/contracts'
 import 'tdesign-react/es/style/index.css'
 import './styles.css'
 
@@ -9,6 +9,7 @@ const { Header, Aside, Content } = Layout
 
 type ApiEnvelope<T> = { data: T; meta?: Record<string, unknown> } | { error: { code: string; message: string } }
 type StaffGrantResult = { grant: StaffGrant; user: User }
+type TenantResourceKind = 'organizers' | 'sponsors' | 'speakers'
 
 const defaultApiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
 const idempotencyPrefix = () => `cms_${Date.now()}_${crypto.randomUUID()}`
@@ -58,6 +59,9 @@ function App() {
   const [pageConfigs, setPageConfigs] = useState<PageConfig[]>([])
   const [publications, setPublications] = useState<ActivityPublication[]>([])
   const [staffGrants, setStaffGrants] = useState<StaffGrant[]>([])
+  const [organizers, setOrganizers] = useState<Organizer[]>([])
+  const [sponsors, setSponsors] = useState<Sponsor[]>([])
+  const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
   const selected = activities.find((activity) => activity.id === selectedId)
@@ -93,6 +97,9 @@ function App() {
     authing_user_id: '',
     display_name: '',
   })
+  const [organizerForm, setOrganizerForm] = useState({ name: '', website_url: '', contact: '' })
+  const [sponsorForm, setSponsorForm] = useState({ name: '', website_url: '', description: '' })
+  const [speakerForm, setSpeakerForm] = useState({ name: '', title: '', organization: '' })
 
   useEffect(() => setActivityForm(draft), [draft])
 
@@ -116,6 +123,22 @@ function App() {
     if (rows) {
       setActivities(rows)
       setSelectedId((current) => current ?? rows[0]?.id)
+    }
+  }
+
+  async function loadTenantResources() {
+    const rows = await run(async () => {
+      const [organizerRows, sponsorRows, speakerRows] = await Promise.all([
+        apiRequest<Organizer[]>({ path: '/operator/organizers', token, apiBase }),
+        apiRequest<Sponsor[]>({ path: '/operator/sponsors', token, apiBase }),
+        apiRequest<Speaker[]>({ path: '/operator/speakers', token, apiBase }),
+      ])
+      return { organizerRows, sponsorRows, speakerRows }
+    })
+    if (rows) {
+      setOrganizers(rows.organizerRows)
+      setSponsors(rows.sponsorRows)
+      setSpeakers(rows.speakerRows)
     }
   }
 
@@ -148,6 +171,7 @@ function App() {
   useEffect(() => {
     if (token) {
       void loadActivities()
+      void loadTenantResources()
     }
   }, [])
 
@@ -297,6 +321,31 @@ function App() {
       setStaffForm({ authing_user_id: '', display_name: '' })
       void loadActivityDetail(selected.id)
       void MessagePlugin.success('Staff grant saved')
+    }
+  }
+
+  async function createTenantResource(kind: TenantResourceKind) {
+    const body =
+      kind === 'organizers'
+        ? organizerForm
+        : kind === 'sponsors'
+          ? sponsorForm
+          : speakerForm
+    const resource = await run(() =>
+      apiRequest<Organizer | Sponsor | Speaker>({
+        path: `/operator/${kind}`,
+        method: 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body,
+      }),
+    )
+    if (resource) {
+      if (kind === 'organizers') setOrganizerForm({ name: '', website_url: '', contact: '' })
+      if (kind === 'sponsors') setSponsorForm({ name: '', website_url: '', description: '' })
+      if (kind === 'speakers') setSpeakerForm({ name: '', title: '', organization: '' })
+      void loadTenantResources()
     }
   }
 
@@ -474,6 +523,82 @@ function App() {
                   <Input value={blockForm.sort_order} onChange={(value) => setBlockForm((form) => ({ ...form, sort_order: String(value) }))} />
                 </div>
                 <Textarea value={blockForm.config} onChange={(value) => setBlockForm((form) => ({ ...form, config: String(value) }))} autosize={{ minRows: 5, maxRows: 10 }} />
+              </section>
+
+              <section className='panel panel--split'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Organizers</div>
+                    <div className='panel-title'>{organizers.length} tenant brands</div>
+                  </div>
+                  <Button onClick={() => createTenantResource('organizers')}>Add</Button>
+                </div>
+                <Input value={organizerForm.name} onChange={(value) => setOrganizerForm((form) => ({ ...form, name: String(value) }))} placeholder='Organizer name' />
+                <div className='form-grid'>
+                  <Input value={organizerForm.website_url} onChange={(value) => setOrganizerForm((form) => ({ ...form, website_url: String(value) }))} placeholder='Website URL' />
+                  <Input value={organizerForm.contact} onChange={(value) => setOrganizerForm((form) => ({ ...form, contact: String(value) }))} placeholder='Contact' />
+                </div>
+                <div className='feed-list compact'>
+                  {organizers.map((organizer) => (
+                    <div key={organizer.id} className='feed-row'>
+                      <div>
+                        <div className='feed-row__title'>{organizer.name}</div>
+                        <div className='feed-row__meta'>{organizer.website_url ?? organizer.contact ?? organizer.id}</div>
+                      </div>
+                      <Tag variant='light'>Organizer</Tag>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className='panel panel--split'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Sponsors</div>
+                    <div className='panel-title'>{sponsors.length} sponsor brands</div>
+                  </div>
+                  <Button onClick={() => createTenantResource('sponsors')}>Add</Button>
+                </div>
+                <Input value={sponsorForm.name} onChange={(value) => setSponsorForm((form) => ({ ...form, name: String(value) }))} placeholder='Sponsor name' />
+                <Input value={sponsorForm.website_url} onChange={(value) => setSponsorForm((form) => ({ ...form, website_url: String(value) }))} placeholder='Website URL' />
+                <Textarea value={sponsorForm.description} onChange={(value) => setSponsorForm((form) => ({ ...form, description: String(value) }))} autosize={{ minRows: 3, maxRows: 5 }} placeholder='Description' />
+                <div className='feed-list compact'>
+                  {sponsors.map((sponsor) => (
+                    <div key={sponsor.id} className='feed-row'>
+                      <div>
+                        <div className='feed-row__title'>{sponsor.name}</div>
+                        <div className='feed-row__meta'>{sponsor.website_url ?? sponsor.id}</div>
+                      </div>
+                      <Tag variant='light'>Sponsor</Tag>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className='panel panel--split'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Speakers</div>
+                    <div className='panel-title'>{speakers.length} people</div>
+                  </div>
+                  <Button onClick={() => createTenantResource('speakers')}>Add</Button>
+                </div>
+                <Input value={speakerForm.name} onChange={(value) => setSpeakerForm((form) => ({ ...form, name: String(value) }))} placeholder='Speaker name' />
+                <div className='form-grid'>
+                  <Input value={speakerForm.title} onChange={(value) => setSpeakerForm((form) => ({ ...form, title: String(value) }))} placeholder='Title' />
+                  <Input value={speakerForm.organization} onChange={(value) => setSpeakerForm((form) => ({ ...form, organization: String(value) }))} placeholder='Organization' />
+                </div>
+                <div className='feed-list compact'>
+                  {speakers.map((speaker) => (
+                    <div key={speaker.id} className='feed-row'>
+                      <div>
+                        <div className='feed-row__title'>{speaker.name}</div>
+                        <div className='feed-row__meta'>{speaker.title ?? speaker.organization ?? speaker.id}</div>
+                      </div>
+                      <Tag variant='light'>Speaker</Tag>
+                    </div>
+                  ))}
+                </div>
               </section>
 
               <section className='panel panel--split span-2'>
