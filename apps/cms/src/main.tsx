@@ -46,6 +46,12 @@ function dateInput(value: string) {
   return value.slice(0, 16)
 }
 
+function defaultDateInput(offsetHours: number) {
+  const value = new Date(Date.now() + offsetHours * 60 * 60 * 1000)
+  value.setMinutes(0, 0, 0)
+  return value.toISOString().slice(0, 16)
+}
+
 function fromLocalDateTime(value: string) {
   return new Date(value).toISOString()
 }
@@ -73,8 +79,8 @@ function App() {
     () => ({
       name: selected?.name ?? '',
       description: selected?.description ?? '',
-      start_time: selected ? dateInput(selected.start_time) : '',
-      end_time: selected ? dateInput(selected.end_time) : '',
+      start_time: selected ? dateInput(selected.start_time) : defaultDateInput(24),
+      end_time: selected ? dateInput(selected.end_time) : defaultDateInput(32),
       timezone: selected?.timezone ?? 'Asia/Shanghai',
       venue: JSON.stringify(selected?.venue ?? { timezone: 'Asia/Shanghai' }, null, 2),
     }),
@@ -510,16 +516,22 @@ function App() {
               {error ? <div className='error-strip'>{error}</div> : null}
             </div>
 
-            <div className='management-grid'>
-              <section className='panel panel--split'>
+            <div className={`management-grid${selected ? '' : ' management-grid--empty'}`}>
+              <section className={`panel panel--split${selected ? '' : ' panel--intro'}`}>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Activity</div>
-                    <div className='panel-title'>Basic Info</div>
+                    <div className='panel-title'>{selected ? 'Basic Info' : 'Create Activity'}</div>
                   </div>
-                  <Button disabled={!selected} onClick={() => updateActivity()}>
-                    Save
-                  </Button>
+                  {selected ? (
+                    <Button onClick={() => updateActivity()}>
+                      Save
+                    </Button>
+                  ) : (
+                    <Button theme='primary' loading={loading} onClick={createActivity}>
+                      Create
+                    </Button>
+                  )}
                 </div>
                 <Input value={activityForm.name} onChange={(value) => setActivityForm((form) => ({ ...form, name: String(value) }))} placeholder='Activity name' />
                 <Textarea value={activityForm.description} onChange={(value) => setActivityForm((form) => ({ ...form, description: String(value) }))} placeholder='Description' />
@@ -529,10 +541,15 @@ function App() {
                 </div>
                 <Input value={activityForm.timezone} onChange={(value) => setActivityForm((form) => ({ ...form, timezone: String(value) }))} />
                 <Textarea value={activityForm.venue} onChange={(value) => setActivityForm((form) => ({ ...form, venue: String(value) }))} autosize={{ minRows: 4, maxRows: 8 }} />
-                <Button theme='danger' variant='outline' disabled={!selected} onClick={() => updateActivity('archived')}>
-                  Archive
-                </Button>
+                {selected ? (
+                  <Button theme='danger' variant='outline' onClick={() => updateActivity('archived')}>
+                    Archive
+                  </Button>
+                ) : null}
               </section>
+
+              {selected ? (
+                <>
 
               <section className='panel panel--split'>
                 <div className='panel-head'>
@@ -859,6 +876,14 @@ function App() {
                   ))}
                 </div>
               </section>
+                </>
+              ) : (
+                <section className='empty-state'>
+                  <div className='panel-label'>Workspace</div>
+                  <div className='empty-state__title'>No Activity selected</div>
+                  <p>Create an Activity or load an operator workspace, then resource panels for Sessions, Page Config, Sponsors, Expo Booths, Staff Grants, and Publications will appear here.</p>
+                </section>
+              )}
             </div>
           </section>
         </Content>
