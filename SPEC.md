@@ -273,9 +273,9 @@ type AgendaItem = {
 ```ts
 type User = {
   id: string;
-  openid: string;
-  nickname: string;
-  avatar_url: string;
+  authing_user_id: string;
+  nickname?: string;
+  avatar_url?: string;
 };
 
 ### 6.5.1 角色
@@ -303,9 +303,12 @@ type Registration = {
 type QRPass = {
   id: string;
   activity_id: string;
-  user_id: string;
-  qr_token: string;
+  participant_id: string;
+  registration_id: string;
+  status: "active" | "invalidated" | "expired";
+  token_fingerprint: string;
   issued_at: string;
+  invalidated_at?: string;
   expires_at?: string;
 };
 ```
@@ -595,6 +598,8 @@ type Survey = {
 - 页面配置必须可开关
 - 运营端改动必须可审计
 - 关键操作必须可追踪
+- 核心业务资源必须强类型建模，Page Config / Block 只负责展示编排和资源引用
+- 所有改变业务事实的操作必须通过 Command、幂等键、权限校验和领域错误码
 
 ### 11.1 实时数据设计
 
@@ -606,7 +611,8 @@ type Survey = {
 
 ### 11.2 安全要求
 
-- 微信 `openid` 绑定后不可随意覆盖
+- 登录、微信小程序身份绑定和通用权限来源由 Authing 承担
+- Event OS 本地只保存 Authing User / Organization 的必要投影
 - QR Token 必须使用签名校验
 - 报名接口必须校验活动归属
 - 签到接口必须校验二维码与活动、日程归属关系
@@ -616,6 +622,8 @@ type Survey = {
 - 页面配置必须可开关
 - 运营端改动必须可审计
 - 关键操作必须可追踪
+- 核心业务资源必须强类型建模，Page Config / Block 只负责展示编排和资源引用
+- 所有改变业务事实的操作必须通过 Command、幂等键、权限校验和领域错误码
 
 ## 11.1 实时数据设计
 
@@ -627,7 +635,8 @@ type Survey = {
 
 ## 11.2 安全要求
 
-- 微信 `openid` 绑定后不可随意覆盖
+- 登录、微信小程序身份绑定和通用权限来源由 Authing 承担
+- Event OS 本地只保存 Authing User / Organization 的必要投影
 - QR Token 必须使用签名校验
 - 报名接口必须校验活动归属
 - 签到接口必须校验二维码与活动、日程归属关系
@@ -657,7 +666,7 @@ type Survey = {
 
 ### 12.3 用户与报名
 
-- `POST /auth/wechat-login`
+- Authing 小程序登录后由 API 校验 Authing token
 - `POST /activities/:id/register`
 - `GET /activities/:id/registration`
 - `GET /users/me`
@@ -665,7 +674,7 @@ type Survey = {
 
 ### 12.4 参会二维码
 
-- `GET /activities/:id/pass`
+- `GET /activities/:id/qr-pass`
 
 ### 12.5 展区
 

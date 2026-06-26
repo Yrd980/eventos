@@ -69,10 +69,10 @@ eventos/
 职责：
 
 - 用户入口
-- Event 选择
+- Activity 选择
 - Agenda 展示
 - Session 详情
-- Ticket 展示
+- QR Pass 展示
 - Check-in 入口
 - 我的页面
 
@@ -89,7 +89,8 @@ eventos/
 职责：
 
 - 登录
-- Event / Session / Ticket / Check-in 业务
+- Activity / Registration / QR Pass / My Agenda / Check-in 业务
+- Authing token 与权限 scope 校验
 - PostgreSQL 读写
 - Redis 读写
 - 向 Realtime 发布事件
@@ -104,9 +105,11 @@ eventos/
 职责：
 
 - 内容管理
-- Event 内容
+- Activity 内容
 - Session 内容
 - Speaker 内容
+- Organizer、Sponsor、Expo Booth、Live Entry、Survey、Notification、Page Config
+- Activity-level draft/published 发布管理
 
 技术：
 
@@ -262,7 +265,7 @@ redis
 职责：
 
 - 存储最终数据
-- 统一承载 users / events / sessions / tickets / checkins / favorites
+- 统一承载 users / tenants / activities / sessions / registrations / qr_passes / my_agenda_items / checkins / publications / audit_events
 
 要求：
 
@@ -338,6 +341,9 @@ redis
 - `REALTIME_PORT`
 - `WECHAT_APP_ID`
 - `WECHAT_APP_SECRET`
+- `AUTHING_APP_ID`
+- `AUTHING_APP_SECRET`
+- `AUTHING_DOMAIN`
 - `QR_HMAC_SECRET`
 
 ### 规则
@@ -427,18 +433,24 @@ redis
 
 `packages/contracts` 应至少定义：
 
-- `Event`
+- API envelope 与 Domain Error Code
+- `Tenant`
+- `Activity`
+- `ActivityPublication`
 - `Session`
 - `User`
-- `Ticket`
+- `Registration`
+- `QRPass`
+- `MyAgendaItem`
 - `Checkin`
+- `AuditEvent`
 - `RealtimeEvent`
-- `ApiResponse`
 
 要求：
 
 - 前端和后端都从这里读取统一契约
 - WebSocket payload 也必须复用这里的类型
+- 业务活动使用 `Activity`，`Event` 仅表示技术事件 payload
 
 ## 16. 交付顺序
 
