@@ -432,7 +432,9 @@ export type BusinessResourceType =
   | "organizer"
   | "sponsor"
   | "speaker"
+  | "session_track"
   | "session"
+  | "registration_form"
   | "registration"
   | "qr_pass"
   | "my_agenda_item"
@@ -440,9 +442,13 @@ export type BusinessResourceType =
   | "expo_booth"
   | "live_entry"
   | "survey"
+  | "page_config"
+  | "block"
   | "notification"
   | "activity_publication"
-  | "audit_event";
+  | "audit_event"
+  | "staff_grant"
+  | "operator_grant";
 
 export type RealtimeEventName =
   | "session.checkin_count_updated"

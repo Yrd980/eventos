@@ -95,6 +95,19 @@ export const sessionTracks = pgTable("session_tracks", {
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
+export const speakers = pgTable("speakers", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenants.id),
+  name: text("name").notNull(),
+  title: text("title"),
+  bio: text("bio"),
+  avatarUrl: text("avatar_url"),
+  organization: text("organization"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(),
   activityId: text("activity_id")
@@ -240,6 +253,37 @@ export const checkinAttempts = pgTable("checkin_attempts", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const pageConfigs = pgTable(
+  "page_configs",
+  {
+    id: text("id").primaryKey(),
+    activityId: text("activity_id")
+      .notNull()
+      .references(() => activities.id),
+    pageKey: text("page_key").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("page_configs_activity_page_unique").on(table.activityId, table.pageKey)],
+);
+
+export const blocks = pgTable("blocks", {
+  id: text("id").primaryKey(),
+  activityId: text("activity_id")
+    .notNull()
+    .references(() => activities.id),
+  pageConfigId: text("page_config_id")
+    .notNull()
+    .references(() => pageConfigs.id),
+  blockKey: text("block_key").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  resourceRefs: jsonb("resource_refs"),
+  config: jsonb("config").notNull().default({}),
+  displaySnapshot: jsonb("display_snapshot"),
+});
+
 export const auditEvents = pgTable("audit_events", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").references(() => tenants.id),
@@ -283,6 +327,21 @@ export const staffGrants = pgTable("staff_grants", {
     .notNull()
     .references(() => users.id),
   authingUserId: text("authing_user_id").notNull(),
+  grantSource: text("grant_source").notNull().default("authing"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const operatorGrants = pgTable("operator_grants", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenants.id),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  authingUserId: text("authing_user_id").notNull(),
+  scope: text("scope").notNull(),
+  activityId: text("activity_id").references(() => activities.id),
   grantSource: text("grant_source").notNull().default("authing"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

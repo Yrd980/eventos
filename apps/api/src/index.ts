@@ -9,6 +9,18 @@ import { getPublishedSnapshot, getVisibleActivity } from "./services/activity";
 import { runCommand } from "./services/command";
 import { requireActor } from "./services/identity";
 import {
+  createOperatorActivity,
+  createOperatorBlock,
+  createOperatorSession,
+  listOperatorActivities,
+  publishOperatorActivity,
+  requireOperatorActivity,
+  rollbackOperatorActivity,
+  updateOperatorActivity,
+  updateOperatorSession,
+  upsertOperatorPageConfig,
+} from "./services/operator";
+import {
   addSessionToMyAgenda,
   checkinParticipant,
   getQRPassForActor,
@@ -78,6 +90,233 @@ app.get("/activities", async (c) =>
     return c.json(success(page, { limit, has_more: rows.length > limit, next_cursor: next }));
   }),
 );
+
+app.get("/operator/activities", async (c) =>
+  withRepo(async (repo) => {
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const limit = readLimit(c.req.query("limit"));
+    const { rows, tenant } = await listOperatorActivities({
+      repo,
+      actor,
+      limit,
+      cursor: c.req.query("cursor"),
+    });
+    const page = rows.slice(0, limit);
+    const next = rows.length > limit ? page.at(-1)?.start_time : undefined;
+    return c.json(success(page, { limit, has_more: rows.length > limit, next_cursor: next, tenant_id: tenant.id }));
+  }),
+);
+
+app.post("/operator/activities", async (c) =>
+  withTransaction(async (repo) => {
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = await readJsonObject(c);
+    const result = await runCommand({
+      repo,
+      commandName: "operator.activity.create",
+      resourceType: "activity",
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: body,
+      execute: () => createOperatorActivity({ repo, actor, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.patch("/operator/activities/:activityId", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = await readJsonObject(c);
+    const result = await runCommand({
+      repo,
+      commandName: "operator.activity.update",
+      resourceType: "activity",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => updateOperatorActivity({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.post("/operator/activities/:activityId/sessions", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = await readJsonObject(c);
+    const result = await runCommand({
+      repo,
+      commandName: "operator.session.create",
+      resourceType: "session",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => createOperatorSession({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.patch("/operator/sessions/:sessionId", async (c) =>
+  withTransaction(async (repo) => {
+    const sessionId = c.req.param("sessionId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = await readJsonObject(c);
+    const result = await runCommand({
+      repo,
+      commandName: "operator.session.update",
+      resourceType: "session",
+      resourceId: sessionId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { sessionId, body },
+      execute: () => updateOperatorSession({ repo, actor, sessionId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.put("/operator/activities/:activityId/page-configs", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = await readJsonObject(c);
+    const result = await runCommand({
+      repo,
+      commandName: "operator.page_config.upsert",
+      resourceType: "page_config",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => upsertOperatorPageConfig({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.post("/operator/activities/:activityId/blocks", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = await readJsonObject(c);
+    const result = await runCommand({
+      repo,
+      commandName: "operator.block.create",
+      resourceType: "block",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => createOperatorBlock({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/activities/:activityId/publications", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(await repo.listPublications(activityId)));
+  }),
+);
+
+app.post("/operator/activities/:activityId/publish", async (c) => {
+  const publication = await withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body: Record<string, unknown> = await readJsonObject(c).catch(() => ({}));
+    return runCommand({
+      repo,
+      commandName: "operator.activity.publish",
+      resourceType: "activity_publication",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () =>
+        publishOperatorActivity({
+          repo,
+          actor,
+          activityId,
+          summary: typeof body.summary === "string" ? body.summary : undefined,
+        }),
+    });
+  });
+
+  await realtime.publish({
+    name: "activity.publication_updated",
+    activity_id: publication.activity_id,
+    publication_id: publication.id,
+    version: publication.version,
+    etag: publication.etag,
+    occurred_at: new Date().toISOString(),
+  });
+
+  return c.json(success(publication));
+});
+
+app.post("/operator/activities/:activityId/rollback", async (c) => {
+  const publication = await withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = await readJsonObject(c);
+    const version = typeof body.version === "number" ? body.version : undefined;
+    if (!version) {
+      throw new DomainError("VALIDATION_FAILED", "version is required", { status: 422 });
+    }
+
+    return runCommand({
+      repo,
+      commandName: "operator.activity.rollback",
+      resourceType: "activity_publication",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () =>
+        rollbackOperatorActivity({
+          repo,
+          actor,
+          activityId,
+          version,
+          summary: typeof body.summary === "string" ? body.summary : undefined,
+        }),
+    });
+  });
+
+  await realtime.publish({
+    name: "activity.publication_updated",
+    activity_id: publication.activity_id,
+    publication_id: publication.id,
+    version: publication.version,
+    etag: publication.etag,
+    occurred_at: new Date().toISOString(),
+  });
+
+  return c.json(success(publication));
+});
 
 app.get("/activities/:activityId", async (c) =>
   withRepo(async (repo) => {
