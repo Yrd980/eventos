@@ -29,14 +29,14 @@ import {
   registerForActivity,
   removeSessionFromMyAgenda,
 } from "./services/participation";
-import { createNoopRealtimePublisher } from "./services/realtime";
+import { createRedisRealtimePublisher } from "./services/realtime";
 import { createRepository } from "./services/repository";
 import { getWechatConfig } from "./wechat";
 
 const env = readEnv();
 const database = createDb(env);
 const verifier = createAuthingVerifier(env);
-const realtime = createNoopRealtimePublisher();
+const realtime = createRedisRealtimePublisher(env);
 const app = new Hono();
 
 async function withRepo<T>(callback: (repo: ReturnType<typeof createRepository>) => Promise<T>) {

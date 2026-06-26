@@ -13,6 +13,12 @@ export type ApiEnv = {
     appId?: string;
     audience?: string;
   };
+  redis: {
+    host: string;
+    port: number;
+    password?: string;
+    realtimeChannel: string;
+  };
   qrHmacSecret: string;
 };
 
@@ -45,6 +51,12 @@ export function readEnv(): ApiEnv {
       domain: process.env.AUTHING_DOMAIN,
       appId: process.env.AUTHING_APP_ID,
       audience: process.env.AUTHING_AUDIENCE,
+    },
+    redis: {
+      host: process.env.REDIS_HOST ?? "localhost",
+      port: readNumber("REDIS_PORT", 6379),
+      password: process.env.REDIS_PASSWORD,
+      realtimeChannel: process.env.REALTIME_REDIS_CHANNEL ?? "eventos:realtime",
     },
     qrHmacSecret: process.env.QR_HMAC_SECRET ?? "yrd",
   };

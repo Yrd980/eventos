@@ -5,5 +5,9 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "typecheck": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "ioredis": "5.11.1",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.52.0"
   }
 }
