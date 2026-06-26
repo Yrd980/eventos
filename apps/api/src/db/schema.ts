@@ -3,6 +3,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -87,6 +88,20 @@ export const activities = pgTable("activities", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const activityOrganizers = pgTable(
+  "activity_organizers",
+  {
+    activityId: text("activity_id")
+      .notNull()
+      .references(() => activities.id),
+    organizerId: text("organizer_id")
+      .notNull()
+      .references(() => organizers.id),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.activityId, table.organizerId] })],
+);
+
 export const activityPublications = pgTable(
   "activity_publications",
   {
@@ -153,6 +168,23 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const sessionSpeakers = pgTable(
+  "session_speakers",
+  {
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id),
+    speakerId: text("speaker_id")
+      .notNull()
+      .references(() => speakers.id),
+    role: text("role").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    titleOverride: text("title_override"),
+    bioOverride: text("bio_override"),
+  },
+  (table) => [primaryKey({ columns: [table.sessionId, table.speakerId] })],
+);
 
 export const participants = pgTable(
   "participants",

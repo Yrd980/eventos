@@ -23,6 +23,8 @@ import {
   updateOperatorActivity,
   updateOperatorSession,
   updateOperatorTenantResource,
+  upsertOperatorActivityOrganizer,
+  upsertOperatorSessionSpeaker,
   upsertOperatorPageConfig,
 } from "./services/operator";
 import {
@@ -48,6 +50,19 @@ const checkinCommandBodySchema = z.object({
   session_id: z.string().min(1),
   qr_token: z.string().min(1),
   device_metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const activityOrganizerBodySchema = z.object({
+  organizer_id: z.string().min(1),
+  sort_order: z.number().int().min(0).default(0),
+});
+
+const sessionSpeakerBodySchema = z.object({
+  speaker_id: z.string().min(1),
+  role: z.enum(["host", "speaker", "panelist", "guest"]).default("speaker"),
+  sort_order: z.number().int().min(0).default(0),
+  title_override: z.string().min(1).optional(),
+  bio_override: z.string().min(1).optional(),
 });
 
 function parseJsonBody<T>(schema: z.ZodType<T>, body: Record<string, unknown>) {
@@ -238,6 +253,36 @@ app.get("/operator/activities/:activityId/sessions", async (c) =>
   }),
 );
 
+app.get("/operator/activities/:activityId/organizers", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(await repo.listActivityOrganizers(activityId)));
+  }),
+);
+
+app.post("/operator/activities/:activityId/organizers", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(activityOrganizerBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.activity_organizer.upsert",
+      resourceType: "organizer",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => upsertOperatorActivityOrganizer({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
 app.post("/operator/activities/:activityId/sessions", async (c) =>
   withTransaction(async (repo) => {
     const activityId = c.req.param("activityId");
@@ -254,6 +299,39 @@ app.post("/operator/activities/:activityId/sessions", async (c) =>
       idempotencyKey: requireIdempotencyKey(c),
       request: { activityId, body },
       execute: () => createOperatorSession({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/sessions/:sessionId/speakers", async (c) =>
+  withRepo(async (repo) => {
+    const sessionId = c.req.param("sessionId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const session = await repo.getSession(sessionId);
+    if (!session) {
+      throw new DomainError("SESSION_NOT_FOUND", "Session was not found", { status: 404 });
+    }
+    await requireOperatorActivity({ repo, actor, activityId: session.activity_id });
+    return c.json(success(await repo.listSessionSpeakers(sessionId)));
+  }),
+);
+
+app.post("/operator/sessions/:sessionId/speakers", async (c) =>
+  withTransaction(async (repo) => {
+    const sessionId = c.req.param("sessionId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(sessionSpeakerBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.session_speaker.upsert",
+      resourceType: "speaker",
+      resourceId: sessionId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { sessionId, body },
+      execute: () => upsertOperatorSessionSpeaker({ repo, actor, sessionId, body }),
     });
     return c.json(success(result));
   }),

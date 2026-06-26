@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { Button, Input, Layout, MessagePlugin, Select, Switch, Tag, Textarea, Typography } from 'tdesign-react'
-import type { Activity, ActivityPublication, Organizer, PageConfig, Session, Speaker, Sponsor, StaffGrant, User } from '@eventos/contracts'
+import type { Activity, ActivityOrganizer, ActivityPublication, Organizer, PageConfig, Session, SessionSpeaker, Speaker, Sponsor, StaffGrant, User } from '@eventos/contracts'
 import 'tdesign-react/es/style/index.css'
 import './styles.css'
 
@@ -59,6 +59,8 @@ function App() {
   const [pageConfigs, setPageConfigs] = useState<PageConfig[]>([])
   const [publications, setPublications] = useState<ActivityPublication[]>([])
   const [staffGrants, setStaffGrants] = useState<StaffGrant[]>([])
+  const [activityOrganizers, setActivityOrganizers] = useState<ActivityOrganizer[]>([])
+  const [sessionSpeakers, setSessionSpeakers] = useState<SessionSpeaker[]>([])
   const [organizers, setOrganizers] = useState<Organizer[]>([])
   const [sponsors, setSponsors] = useState<Sponsor[]>([])
   const [speakers, setSpeakers] = useState<Speaker[]>([])
@@ -100,6 +102,8 @@ function App() {
   const [organizerForm, setOrganizerForm] = useState({ name: '', website_url: '', contact: '' })
   const [sponsorForm, setSponsorForm] = useState({ name: '', website_url: '', description: '' })
   const [speakerForm, setSpeakerForm] = useState({ name: '', title: '', organization: '' })
+  const [activityOrganizerForm, setActivityOrganizerForm] = useState({ organizer_id: '', sort_order: '0' })
+  const [sessionSpeakerForm, setSessionSpeakerForm] = useState({ session_id: '', speaker_id: '', role: 'speaker', sort_order: '0' })
 
   useEffect(() => setActivityForm(draft), [draft])
 
@@ -144,14 +148,16 @@ function App() {
 
   async function loadActivityDetail(activityId: string) {
     const detail = await run(async () => {
-      const [activityRows, sessionRows, pageRows, publicationRows, staffRows] = await Promise.all([
+      const [activityRows, sessionRows, pageRows, publicationRows, staffRows, activityOrganizerRows] = await Promise.all([
         apiRequest<Activity>({ path: `/operator/activities/${activityId}`, token, apiBase }),
         apiRequest<Session[]>({ path: `/operator/activities/${activityId}/sessions`, token, apiBase }),
         apiRequest<PageConfig[]>({ path: `/operator/activities/${activityId}/page-configs`, token, apiBase }),
         apiRequest<ActivityPublication[]>({ path: `/operator/activities/${activityId}/publications`, token, apiBase }),
         apiRequest<StaffGrant[]>({ path: `/operator/activities/${activityId}/staff-grants`, token, apiBase }),
+        apiRequest<ActivityOrganizer[]>({ path: `/operator/activities/${activityId}/organizers`, token, apiBase }),
       ])
-      return { activityRows, sessionRows, pageRows, publicationRows, staffRows }
+      const speakerRows = (await Promise.all(sessionRows.map((session) => apiRequest<SessionSpeaker[]>({ path: `/operator/sessions/${session.id}/speakers`, token, apiBase })))).flat()
+      return { activityRows, sessionRows, pageRows, publicationRows, staffRows, activityOrganizerRows, speakerRows }
     })
     if (detail) {
       setActivities((current) => current.map((item) => (item.id === detail.activityRows.id ? detail.activityRows : item)))
@@ -159,6 +165,9 @@ function App() {
       setPageConfigs(detail.pageRows)
       setPublications(detail.publicationRows)
       setStaffGrants(detail.staffRows)
+      setActivityOrganizers(detail.activityOrganizerRows)
+      setSessionSpeakers(detail.speakerRows)
+      setSessionSpeakerForm((form) => ({ ...form, session_id: form.session_id || detail.sessionRows[0]?.id || '' }))
     }
   }
 
@@ -346,6 +355,49 @@ function App() {
       if (kind === 'sponsors') setSponsorForm({ name: '', website_url: '', description: '' })
       if (kind === 'speakers') setSpeakerForm({ name: '', title: '', organization: '' })
       void loadTenantResources()
+    }
+  }
+
+  async function upsertActivityOrganizer() {
+    if (!selected) return
+    const link = await run(() =>
+      apiRequest<ActivityOrganizer>({
+        path: `/operator/activities/${selected.id}/organizers`,
+        method: 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body: {
+          organizer_id: activityOrganizerForm.organizer_id,
+          sort_order: Number(activityOrganizerForm.sort_order),
+        },
+      }),
+    )
+    if (link) {
+      setActivityOrganizerForm({ organizer_id: '', sort_order: '0' })
+      void loadActivityDetail(selected.id)
+    }
+  }
+
+  async function upsertSessionSpeaker() {
+    if (!sessionSpeakerForm.session_id || !sessionSpeakerForm.speaker_id) return
+    const link = await run(() =>
+      apiRequest<SessionSpeaker>({
+        path: `/operator/sessions/${sessionSpeakerForm.session_id}/speakers`,
+        method: 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body: {
+          speaker_id: sessionSpeakerForm.speaker_id,
+          role: sessionSpeakerForm.role,
+          sort_order: Number(sessionSpeakerForm.sort_order),
+        },
+      }),
+    )
+    if (link && selected) {
+      setSessionSpeakerForm((form) => ({ ...form, speaker_id: '', sort_order: '0' }))
+      void loadActivityDetail(selected.id)
     }
   }
 
@@ -598,6 +650,68 @@ function App() {
                       <Tag variant='light'>Speaker</Tag>
                     </div>
                   ))}
+                </div>
+              </section>
+
+              <section className='panel panel--split'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Activity Organizers</div>
+                    <div className='panel-title'>{activityOrganizers.length} linked</div>
+                  </div>
+                  <Button disabled={!selected || !activityOrganizerForm.organizer_id} onClick={upsertActivityOrganizer}>Link</Button>
+                </div>
+                <Select value={activityOrganizerForm.organizer_id} onChange={(value) => setActivityOrganizerForm((form) => ({ ...form, organizer_id: String(value) }))} options={organizers.map((organizer) => ({ label: organizer.name, value: organizer.id }))} />
+                <Input value={activityOrganizerForm.sort_order} onChange={(value) => setActivityOrganizerForm((form) => ({ ...form, sort_order: String(value) }))} placeholder='Sort order' />
+                <div className='feed-list compact'>
+                  {activityOrganizers.map((link) => {
+                    const organizer = organizers.find((item) => item.id === link.organizer_id)
+                    return (
+                      <div key={`${link.activity_id}-${link.organizer_id}`} className='feed-row'>
+                        <div>
+                          <div className='feed-row__title'>{organizer?.name ?? link.organizer_id}</div>
+                          <div className='feed-row__meta'>Sort {link.sort_order}</div>
+                        </div>
+                        <Tag variant='light'>Linked</Tag>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+
+              <section className='panel panel--split'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Session Speakers</div>
+                    <div className='panel-title'>{sessionSpeakers.length} linked</div>
+                  </div>
+                  <Button disabled={!sessionSpeakerForm.session_id || !sessionSpeakerForm.speaker_id} onClick={upsertSessionSpeaker}>Link</Button>
+                </div>
+                <Select value={sessionSpeakerForm.session_id} onChange={(value) => setSessionSpeakerForm((form) => ({ ...form, session_id: String(value) }))} options={sessions.map((session) => ({ label: session.title, value: session.id }))} />
+                <div className='form-grid'>
+                  <Select value={sessionSpeakerForm.speaker_id} onChange={(value) => setSessionSpeakerForm((form) => ({ ...form, speaker_id: String(value) }))} options={speakers.map((speaker) => ({ label: speaker.name, value: speaker.id }))} />
+                  <Select value={sessionSpeakerForm.role} onChange={(value) => setSessionSpeakerForm((form) => ({ ...form, role: String(value) }))} options={[
+                    { label: 'Speaker', value: 'speaker' },
+                    { label: 'Host', value: 'host' },
+                    { label: 'Panelist', value: 'panelist' },
+                    { label: 'Guest', value: 'guest' },
+                  ]} />
+                </div>
+                <Input value={sessionSpeakerForm.sort_order} onChange={(value) => setSessionSpeakerForm((form) => ({ ...form, sort_order: String(value) }))} placeholder='Sort order' />
+                <div className='feed-list compact'>
+                  {sessionSpeakers.map((link) => {
+                    const session = sessions.find((item) => item.id === link.session_id)
+                    const speaker = speakers.find((item) => item.id === link.speaker_id)
+                    return (
+                      <div key={`${link.session_id}-${link.speaker_id}`} className='feed-row'>
+                        <div>
+                          <div className='feed-row__title'>{speaker?.name ?? link.speaker_id}</div>
+                          <div className='feed-row__meta'>{session?.title ?? link.session_id} / {link.role} / Sort {link.sort_order}</div>
+                        </div>
+                        <Tag variant='light'>Linked</Tag>
+                      </div>
+                    )
+                  })}
                 </div>
               </section>
 

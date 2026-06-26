@@ -455,6 +455,83 @@ export async function grantOperatorStaff(input: { repo: EventOsRepository; actor
   return { grant, user: staffUser };
 }
 
+export async function upsertOperatorActivityOrganizer(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  activityId: string;
+  body: { organizer_id: string; sort_order: number };
+}) {
+  const { activity, tenant } = await requireOperatorActivity({
+    repo: input.repo,
+    actor: input.actor,
+    activityId: input.activityId,
+  });
+  const organizer = await input.repo.getOrganizer(input.body.organizer_id);
+  if (!organizer || organizer.tenant_id !== tenant.id) {
+    throw new DomainError("TENANT_MISMATCH", "Organizer belongs to a different Tenant or was not found", { status: 404 });
+  }
+
+  const link = await input.repo.upsertActivityOrganizer({
+    activityId: activity.id,
+    organizerId: organizer.id,
+    sortOrder: input.body.sort_order,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "activity_organizer.upserted",
+    resourceType: "organizer",
+    resourceId: organizer.id,
+    metadata: { sort_order: link.sort_order },
+  });
+
+  return link;
+}
+
+export async function upsertOperatorSessionSpeaker(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  sessionId: string;
+  body: { speaker_id: string; role: "host" | "speaker" | "panelist" | "guest"; sort_order: number; title_override?: string; bio_override?: string };
+}) {
+  const session = await input.repo.getSession(input.sessionId);
+  if (!session) {
+    throw new DomainError("SESSION_NOT_FOUND", "Session was not found", { status: 404 });
+  }
+  const { activity, tenant } = await requireOperatorActivity({
+    repo: input.repo,
+    actor: input.actor,
+    activityId: session.activity_id,
+  });
+  const speaker = await input.repo.getSpeaker(input.body.speaker_id);
+  if (!speaker || speaker.tenant_id !== tenant.id) {
+    throw new DomainError("TENANT_MISMATCH", "Speaker belongs to a different Tenant or was not found", { status: 404 });
+  }
+
+  const link = await input.repo.upsertSessionSpeaker({
+    sessionId: session.id,
+    speakerId: speaker.id,
+    role: input.body.role,
+    sortOrder: input.body.sort_order,
+    titleOverride: input.body.title_override,
+    bioOverride: input.body.bio_override,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "session_speaker.upserted",
+    resourceType: "speaker",
+    resourceId: speaker.id,
+    metadata: { session_id: session.id, role: link.role, sort_order: link.sort_order },
+  });
+
+  return link;
+}
+
 async function buildPublicationSnapshot(repo: EventOsRepository, activity: Activity) {
   const sessions = await repo.listSessions(activity.id);
   const pageConfigs = await repo.listPageConfigs(activity.id);

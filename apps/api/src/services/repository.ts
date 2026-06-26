@@ -1,5 +1,6 @@
 import type {
   Activity,
+  ActivityOrganizer,
   ActivityPublication,
   AuditEvent,
   BusinessResourceType,
@@ -14,6 +15,7 @@ import type {
   QRPass,
   Registration,
   Session,
+  SessionSpeaker,
   Speaker,
   Sponsor,
   StaffGrant,
@@ -24,6 +26,7 @@ import { and, count, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { DbSession } from "../db";
 import {
   activities,
+  activityOrganizers,
   activityPublications,
   auditEvents,
   checkinAttempts,
@@ -39,6 +42,7 @@ import {
   qrPasses,
   registrations,
   sessions,
+  sessionSpeakers,
   sessionTracks,
   speakers,
   sponsors,
@@ -126,6 +130,14 @@ function mapOrganizer(row: typeof organizers.$inferSelect): Organizer {
   };
 }
 
+function mapActivityOrganizer(row: typeof activityOrganizers.$inferSelect): ActivityOrganizer {
+  return {
+    activity_id: row.activityId,
+    organizer_id: row.organizerId,
+    sort_order: row.sortOrder,
+  };
+}
+
 function mapSponsor(row: typeof sponsors.$inferSelect): Sponsor {
   return {
     id: row.id,
@@ -148,6 +160,17 @@ function mapSpeaker(row: typeof speakers.$inferSelect): Speaker {
     avatar_url: optional(row.avatarUrl),
     organization: optional(row.organization),
     created_at: iso(row.createdAt),
+  };
+}
+
+function mapSessionSpeaker(row: typeof sessionSpeakers.$inferSelect): SessionSpeaker {
+  return {
+    session_id: row.sessionId,
+    speaker_id: row.speakerId,
+    role: row.role as SessionSpeaker["role"],
+    sort_order: row.sortOrder,
+    title_override: optional(row.titleOverride),
+    bio_override: optional(row.bioOverride),
   };
 }
 
@@ -345,6 +368,10 @@ export function createRepository(db: DbSession) {
       return (await db.select().from(organizers).where(eq(organizers.tenantId, tenantId)).orderBy(desc(organizers.createdAt), organizers.id)).map(mapOrganizer);
     },
 
+    async getOrganizer(organizerId: string) {
+      return first((await db.select().from(organizers).where(eq(organizers.id, organizerId)).limit(1)).map(mapOrganizer));
+    },
+
     async createOrganizer(input: { id: string; tenantId: string; name: string; logoUrl?: string; description?: string; websiteUrl?: string; contact?: string }) {
       const rows = await db
         .insert(organizers)
@@ -413,6 +440,10 @@ export function createRepository(db: DbSession) {
       return (await db.select().from(speakers).where(eq(speakers.tenantId, tenantId)).orderBy(desc(speakers.createdAt), speakers.id)).map(mapSpeaker);
     },
 
+    async getSpeaker(speakerId: string) {
+      return first((await db.select().from(speakers).where(eq(speakers.id, speakerId)).limit(1)).map(mapSpeaker));
+    },
+
     async createSpeaker(input: { id: string; tenantId: string; name: string; title?: string; bio?: string; avatarUrl?: string; organization?: string }) {
       const rows = await db
         .insert(speakers)
@@ -459,6 +490,28 @@ export function createRepository(db: DbSession) {
         )
         .limit(1);
       return rows.length > 0;
+    },
+
+    async listActivityOrganizers(activityId: string) {
+      return (
+        await db.select().from(activityOrganizers).where(eq(activityOrganizers.activityId, activityId)).orderBy(activityOrganizers.sortOrder, activityOrganizers.organizerId)
+      ).map(mapActivityOrganizer);
+    },
+
+    async upsertActivityOrganizer(input: { activityId: string; organizerId: string; sortOrder: number }) {
+      const rows = await db
+        .insert(activityOrganizers)
+        .values({
+          activityId: input.activityId,
+          organizerId: input.organizerId,
+          sortOrder: input.sortOrder,
+        })
+        .onConflictDoUpdate({
+          target: [activityOrganizers.activityId, activityOrganizers.organizerId],
+          set: { sortOrder: input.sortOrder },
+        })
+        .returning();
+      return mapActivityOrganizer(rows[0]);
     },
 
     async getCurrentPublication(activityId: string) {
@@ -648,6 +701,43 @@ export function createRepository(db: DbSession) {
         .where(eq(sessions.id, input.id))
         .returning();
       return first(rows.map(mapSession));
+    },
+
+    async listSessionSpeakers(sessionId: string) {
+      return (
+        await db.select().from(sessionSpeakers).where(eq(sessionSpeakers.sessionId, sessionId)).orderBy(sessionSpeakers.sortOrder, sessionSpeakers.speakerId)
+      ).map(mapSessionSpeaker);
+    },
+
+    async upsertSessionSpeaker(input: {
+      sessionId: string;
+      speakerId: string;
+      role: SessionSpeaker["role"];
+      sortOrder: number;
+      titleOverride?: string;
+      bioOverride?: string;
+    }) {
+      const rows = await db
+        .insert(sessionSpeakers)
+        .values({
+          sessionId: input.sessionId,
+          speakerId: input.speakerId,
+          role: input.role,
+          sortOrder: input.sortOrder,
+          titleOverride: input.titleOverride,
+          bioOverride: input.bioOverride,
+        })
+        .onConflictDoUpdate({
+          target: [sessionSpeakers.sessionId, sessionSpeakers.speakerId],
+          set: {
+            role: input.role,
+            sortOrder: input.sortOrder,
+            titleOverride: input.titleOverride,
+            bioOverride: input.bioOverride,
+          },
+        })
+        .returning();
+      return mapSessionSpeaker(rows[0]);
     },
 
     async upsertSessionTrack(input: { id: string; activityId: string; name: string; color?: string; sortOrder?: number }) {
