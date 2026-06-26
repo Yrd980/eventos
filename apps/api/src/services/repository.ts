@@ -825,6 +825,24 @@ export function createRepository(db: DbSession) {
       return mapCheckin(rows[0]);
     },
 
+    async getCheckin(input: { activityId: string; participantId: string; sessionId: string }) {
+      return first(
+        (
+          await db
+            .select()
+            .from(checkins)
+            .where(
+              and(
+                eq(checkins.activityId, input.activityId),
+                eq(checkins.participantId, input.participantId),
+                eq(checkins.sessionId, input.sessionId),
+              ),
+            )
+            .limit(1)
+        ).map(mapCheckin),
+      );
+    },
+
     async getCheckinCount(sessionId: string) {
       const rows = await db.select({ value: count() }).from(checkins).where(eq(checkins.sessionId, sessionId));
       return rows[0]?.value ?? 0;

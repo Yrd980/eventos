@@ -5,6 +5,7 @@ export default {
     'pages/assistant/index',
     'pages/expo/index',
     'pages/me/index',
+    'pages/staff-checkin/index',
   ],
   tabBar: {
     color: '#64748b',

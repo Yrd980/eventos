@@ -34,22 +34,26 @@ export function signQRToken(payload: QRTokenPayload, secret: string) {
 }
 
 export function verifyQRToken(token: string, secret: string): QRTokenPayload | undefined {
-  const [body, signature] = token.split(".");
-  if (!body || !signature) {
+  try {
+    const [body, signature] = token.split(".");
+    if (!body || !signature) {
+      return undefined;
+    }
+
+    const expected = createHmac("sha256", secret).update(body).digest("base64url");
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (signatureBuffer.length !== expectedBuffer.length || !timingSafeEqual(signatureBuffer, expectedBuffer)) {
+      return undefined;
+    }
+
+    const parsed = JSON.parse(unbase64Url(body)) as Partial<QRTokenPayload>;
+    if (!parsed.activity_id || !parsed.participant_id || !parsed.registration_id || !parsed.qr_pass_id) {
+      return undefined;
+    }
+
+    return parsed as QRTokenPayload;
+  } catch {
     return undefined;
   }
-
-  const expected = createHmac("sha256", secret).update(body).digest("base64url");
-  const signatureBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
-  if (signatureBuffer.length !== expectedBuffer.length || !timingSafeEqual(signatureBuffer, expectedBuffer)) {
-    return undefined;
-  }
-
-  const parsed = JSON.parse(unbase64Url(body)) as Partial<QRTokenPayload>;
-  if (!parsed.activity_id || !parsed.participant_id || !parsed.registration_id || !parsed.qr_pass_id) {
-    return undefined;
-  }
-
-  return parsed as QRTokenPayload;
 }

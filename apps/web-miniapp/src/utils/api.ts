@@ -1,11 +1,22 @@
 import Taro from '@tarojs/taro'
-import type { Activity, ApiError, ApiSuccess, ExpoBooth, MyAgendaItem, QRPass, Registration, Session } from '@eventos/contracts'
+import type { Activity, ApiError, ApiSuccess, DomainErrorCode, ExpoBooth, MyAgendaItem, QRPass, Registration, Session, StaffCheckinResult } from '@eventos/contracts'
 
 export type QRPassView = QRPass & { token: string }
 
 const API_BASE_KEY = 'eventos_api_base_url'
 const AUTHING_TOKEN_KEY = 'eventos_authing_token'
 const ACTIVITY_ID_KEY = 'eventos_activity_id'
+
+export class ApiRequestError extends Error {
+  code: DomainErrorCode
+  details?: Record<string, unknown>
+
+  constructor(error: ApiError['error']) {
+    super(error.message)
+    this.code = error.code
+    this.details = error.details
+  }
+}
 
 export function getApiBaseUrl() {
   return (Taro.getStorageSync(API_BASE_KEY) as string | undefined) || process.env.TARO_APP_API_BASE_URL || 'http://localhost:3000'
@@ -53,7 +64,7 @@ export async function apiRequest<T>(path: string, options: { method?: string; bo
 
   const payload = response.data
   if (isApiError(payload)) {
-    throw new Error(`${payload.error.code}: ${payload.error.message}`)
+    throw new ApiRequestError(payload.error)
   }
   return payload.data
 }
@@ -99,4 +110,20 @@ export async function loadMyAgenda(activityId: string) {
 
 export async function loadExpoBooths(activityId: string) {
   return apiRequest<ExpoBooth[]>(`/activities/${activityId}/expo-booths`, { auth: false })
+}
+
+export async function checkinSession(input: { sessionId: string; qrToken: string; deviceMetadata?: Record<string, unknown> }) {
+  return apiRequest<StaffCheckinResult>('/checkin', {
+    method: 'POST',
+    idempotency: true,
+    body: {
+      session_id: input.sessionId,
+      qr_token: input.qrToken,
+      device_metadata: input.deviceMetadata,
+    },
+  })
+}
+
+export async function loadCheckinCount(sessionId: string) {
+  return apiRequest<{ session_id: string; count: number }>(`/sessions/${sessionId}/checkin-count`, { auth: false })
 }

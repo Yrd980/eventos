@@ -84,6 +84,9 @@ export default function SchedulePage() {
           <Text className='session-card__cta' onClick={() => add(selectedSession)}>
             {agendaSet.has(selectedSession.id) ? '已在 My Agenda' : '加入 My Agenda'}
           </Text>
+          <Text className='session-card__staff' onClick={() => Taro.navigateTo({ url: `/pages/staff-checkin/index?sessionId=${selectedSession.id}` })}>
+            Staff Check-in
+          </Text>
         </View>
       )}
 

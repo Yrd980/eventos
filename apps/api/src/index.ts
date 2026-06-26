@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { z } from "zod";
 import { createAuthingVerifier } from "./auth/authing";
 import { createDb } from "./db";
 import { readEnv } from "./env";
@@ -38,6 +39,24 @@ const database = createDb(env);
 const verifier = createAuthingVerifier(env);
 const realtime = createRedisRealtimePublisher(env);
 const app = new Hono();
+
+const checkinCommandBodySchema = z.object({
+  session_id: z.string().min(1),
+  qr_token: z.string().min(1),
+  device_metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+function parseJsonBody<T>(schema: z.ZodType<T>, body: Record<string, unknown>) {
+  const result = schema.safeParse(body);
+  if (!result.success) {
+    throw new DomainError("VALIDATION_FAILED", "Request body failed validation", {
+      status: 422,
+      details: { issues: result.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })) },
+    });
+  }
+
+  return result.data;
+}
 
 async function withRepo<T>(callback: (repo: ReturnType<typeof createRepository>) => Promise<T>) {
   return callback(createRepository(database.db));
@@ -474,31 +493,25 @@ app.get("/activities/:activityId/my-agenda", async (c) =>
 app.post("/checkin", async (c) => {
   const result = await withTransaction(async (repo) => {
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
-    const body = await readJsonObject(c);
-    const sessionId = typeof body.session_id === "string" ? body.session_id : undefined;
-    const qrToken = typeof body.qr_token === "string" ? body.qr_token : undefined;
-
-    if (!sessionId || !qrToken) {
-      throw new DomainError("VALIDATION_FAILED", "session_id and qr_token are required", { status: 422 });
-    }
+    const body = parseJsonBody(checkinCommandBodySchema, await readJsonObject(c));
 
     return runCommand({
       repo,
       commandName: "checkin.create",
       resourceType: "checkin",
-      resourceId: sessionId,
+      resourceId: body.session_id,
       actorUserId: actor.user.id,
       actorAuthingUserId: actor.principal.authing_user_id,
       idempotencyKey: requireIdempotencyKey(c),
-      request: { sessionId, qrToken },
+      request: body,
       execute: () =>
         checkinParticipant({
           repo,
-          sessionId,
-          qrToken,
+          sessionId: body.session_id,
+          qrToken: body.qr_token,
           actor,
           qrSecret: env.qrHmacSecret,
-          deviceMetadata: typeof body.device_metadata === "object" && body.device_metadata !== null ? (body.device_metadata as Record<string, unknown>) : undefined,
+          deviceMetadata: body.device_metadata,
         }),
     });
   });

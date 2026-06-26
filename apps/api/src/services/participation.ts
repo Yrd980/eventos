@@ -1,4 +1,4 @@
-import type { MyAgendaItem } from "@eventos/contracts";
+import type { MyAgendaItem, StaffCheckinResult } from "@eventos/contracts";
 import type { RequestActor } from "../auth/authing";
 import { DomainError } from "../http/envelope";
 import { getMutableParticipantActivity, getVisibleActivity } from "./activity";
@@ -248,7 +248,7 @@ export async function checkinParticipant(input: {
   actor: RequestActor;
   qrSecret: string;
   deviceMetadata?: Record<string, unknown>;
-}) {
+}): Promise<StaffCheckinResult> {
   const session = await input.repo.getSession(input.sessionId);
   if (!session) {
     throw new DomainError("SESSION_NOT_FOUND", "Session was not found", { status: 404 });
@@ -296,8 +296,34 @@ export async function checkinParticipant(input: {
   }
 
   const registration = await input.repo.getRegistrationById(qrPass.registration_id);
-  if (!registration || registration.status !== "confirmed") {
+  if (!registration) {
     return fail("REGISTRATION_NOT_CONFIRMED", "Confirmed Registration is required");
+  }
+  if (registration.status === "cancelled") {
+    return fail("REGISTRATION_CANCELLED", "Registration is cancelled");
+  }
+  if (registration.status !== "confirmed") {
+    return fail("REGISTRATION_NOT_CONFIRMED", "Confirmed Registration is required");
+  }
+
+  const existingCheckin = await input.repo.getCheckin({
+    activityId: activity.id,
+    participantId: qrPass.participant_id,
+    sessionId: session.id,
+  });
+
+  if (existingCheckin) {
+    const count = await input.repo.getCheckinCount(session.id);
+    await input.repo.recordCheckinAttempt({
+      id: createId("cha"),
+      activity_id: activity.id,
+      session_id: session.id,
+      staff_user_id: input.actor.user.id,
+      result: "success",
+      metadata: { outcome: "duplicate" },
+    });
+
+    return { outcome: "duplicate", checkin: existingCheckin, count };
   }
 
   const checkin = await input.repo.createCheckin({
@@ -329,5 +355,5 @@ export async function checkinParticipant(input: {
     metadata: { session_id: session.id, participant_id: qrPass.participant_id, qr_pass_id: qrPass.id },
   });
 
-  return { checkin, count };
+  return { outcome: "success", checkin, count };
 }

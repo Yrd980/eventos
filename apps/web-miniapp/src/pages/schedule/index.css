@@ -155,7 +155,8 @@
 }
 
 .session-card__line,
-.session-card__cta {
+.session-card__cta,
+.session-card__staff {
   display: block;
 }
 
@@ -173,6 +174,17 @@
   background: linear-gradient(90deg, #7b4ad6, #ff8da0);
   color: #fff;
   font-size: 24rpx;
+  font-weight: 700;
+}
+
+.session-card__staff {
+  width: fit-content;
+  margin-top: 12rpx;
+  padding: 10rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 22rpx;
   font-weight: 700;
 }
 

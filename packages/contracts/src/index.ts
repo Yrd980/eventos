@@ -36,6 +36,7 @@ export type DomainErrorCode =
   | "PERMISSION_DENIED"
   | "REGISTRATION_REQUIRED"
   | "REGISTRATION_NOT_CONFIRMED"
+  | "REGISTRATION_CANCELLED"
   | "REGISTRATION_ALREADY_EXISTS"
   | "QR_PASS_INVALID"
   | "QR_PASS_EXPIRED"
@@ -271,6 +272,20 @@ export type Checkin = {
   staff_user_id?: Id;
   device_metadata?: Record<string, unknown>;
   created_at: ISODateTime;
+};
+
+export type StaffCheckinCommand = CommandMeta & {
+  session_id: Id;
+  qr_token: string;
+  device_metadata?: Record<string, unknown>;
+};
+
+export type StaffCheckinOutcome = "success" | "duplicate";
+
+export type StaffCheckinResult = {
+  outcome: StaffCheckinOutcome;
+  checkin: Checkin;
+  count: number;
 };
 
 export type CheckinAttempt = {
