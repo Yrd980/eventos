@@ -1600,6 +1600,16 @@ export function createRepository(db: DbSession) {
       return mapRegistrationSubmission(rows[0]);
     },
 
+    async listRegistrationSubmissions(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(registrationSubmissions)
+          .where(eq(registrationSubmissions.activityId, activityId))
+          .orderBy(desc(registrationSubmissions.submittedAt), registrationSubmissions.id)
+      ).map(mapRegistrationSubmission);
+    },
+
     async getActiveQRPass(activityId: string, participantId: string) {
       return first(
         (
@@ -1689,6 +1699,26 @@ export function createRepository(db: DbSession) {
             .limit(1)
         ).map(mapSurveyResponse),
       );
+    },
+
+    async listSurveyResponses(input: { activityId: string; surveyId?: string }) {
+      return (
+        await db
+          .select()
+          .from(surveyResponses)
+          .where(input.surveyId ? and(eq(surveyResponses.activityId, input.activityId), eq(surveyResponses.surveyId, input.surveyId)) : eq(surveyResponses.activityId, input.activityId))
+          .orderBy(desc(surveyResponses.submittedAt), surveyResponses.id)
+      ).map(mapSurveyResponse);
+    },
+
+    async getSurveyResponse(responseId: string) {
+      return first((await db.select().from(surveyResponses).where(eq(surveyResponses.id, responseId)).limit(1)).map(mapSurveyResponse));
+    },
+
+    async listSurveyAnswers(responseId: string) {
+      return (
+        await db.select().from(surveyAnswers).where(eq(surveyAnswers.responseId, responseId)).orderBy(surveyAnswers.questionId, surveyAnswers.id)
+      ).map(mapSurveyAnswer);
     },
 
     async createSurveyResponse(input: {

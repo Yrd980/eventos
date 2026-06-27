@@ -27,6 +27,9 @@ import {
   listOperatorActivityTemplates,
   listOperatorActivityGrants,
   listOperatorNotifications,
+  listOperatorRegistrationSubmissions,
+  listOperatorSurveyAnswers,
+  listOperatorSurveyResponses,
   listOperatorTenantResources,
   publishOperatorActivity,
   requireOperatorActivity,
@@ -679,12 +682,35 @@ app.post("/operator/activities/:activityId/registration-forms", async (c) =>
   }),
 );
 
+app.get("/operator/activities/:activityId/registration-submissions", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listOperatorRegistrationSubmissions({ repo, actor, activityId })));
+  }),
+);
+
 app.get("/operator/activities/:activityId/surveys", async (c) =>
   withRepo(async (repo) => {
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
     await requireOperatorActivity({ repo, actor, activityId });
     return c.json(success(await repo.listSurveys(activityId)));
+  }),
+);
+
+app.get("/operator/activities/:activityId/survey-responses", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listOperatorSurveyResponses({ repo, actor, activityId, surveyId: c.req.query("survey_id") })));
+  }),
+);
+
+app.get("/operator/survey-responses/:responseId/answers", async (c) =>
+  withRepo(async (repo) => {
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listOperatorSurveyAnswers({ repo, actor, responseId: c.req.param("responseId") })));
   }),
 );
 

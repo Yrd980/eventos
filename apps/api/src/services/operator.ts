@@ -1141,6 +1141,38 @@ export async function updateOperatorSurvey(input: {
   return survey;
 }
 
+export async function listOperatorRegistrationSubmissions(input: { repo: EventOsRepository; actor: RequestActor; activityId: string }) {
+  await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: input.activityId });
+  return input.repo.listRegistrationSubmissions(input.activityId);
+}
+
+export async function listOperatorSurveyResponses(input: { repo: EventOsRepository; actor: RequestActor; activityId: string; surveyId?: string }) {
+  await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: input.activityId });
+  if (input.surveyId) {
+    const survey = await input.repo.getSurvey(input.surveyId);
+    if (!survey) {
+      throw new DomainError("SURVEY_NOT_FOUND", "Survey was not found", { status: 404 });
+    }
+    if (survey.activity_id !== input.activityId) {
+      throw new DomainError("TENANT_MISMATCH", "Survey belongs to a different Activity", { status: 403 });
+    }
+  }
+  return input.repo.listSurveyResponses({ activityId: input.activityId, surveyId: input.surveyId });
+}
+
+export async function listOperatorSurveyAnswers(input: { repo: EventOsRepository; actor: RequestActor; responseId: string }) {
+  const response = await input.repo.getSurveyResponse(input.responseId);
+  if (!response) {
+    throw new DomainError("VALIDATION_FAILED", "Survey Response was not found", { status: 404 });
+  }
+  const survey = await input.repo.getSurvey(response.survey_id);
+  if (!survey) {
+    throw new DomainError("SURVEY_NOT_FOUND", "Survey was not found", { status: 404 });
+  }
+  await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: survey.activity_id });
+  return { response, answers: await input.repo.listSurveyAnswers(input.responseId) };
+}
+
 export async function upsertOperatorSurveyQuestion(input: {
   repo: EventOsRepository;
   actor: RequestActor;
