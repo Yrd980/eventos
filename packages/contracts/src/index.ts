@@ -23,6 +23,58 @@ export type CursorPageMeta = {
   limit: number;
 };
 
+export type SortDirection = "asc" | "desc";
+
+export type CursorListContract<TSortKey extends string, TFilter extends Record<string, unknown> = Record<string, unknown>> = {
+  limit: number;
+  cursor?: string;
+  sort?: {
+    key: TSortKey;
+    direction: SortDirection;
+  };
+  filter?: TFilter;
+};
+
+export type OperatorActivityListContract = CursorListContract<
+  "start_time" | "created_at" | "updated_at",
+  {
+    status?: ActivityStatus;
+  }
+>;
+
+export type OperatorSessionListContract = CursorListContract<
+  "start_time" | "sort_order" | "created_at",
+  {
+    status?: SessionStatus;
+    track_id?: Id;
+  }
+>;
+
+export type OperatorResourceListContract = CursorListContract<
+  "created_at" | "name",
+  {
+    activity_id?: Id;
+    status?: string;
+  }
+>;
+
+export type RealtimeRecoveryContract =
+  | {
+      event_name: "activity.publication_updated";
+      recovery_endpoint: "GET /activities/:activityId/publication";
+      snapshot_resource: "activity_publication";
+    }
+  | {
+      event_name: "session.checkin_count_updated";
+      recovery_endpoint: "GET /sessions/:sessionId/checkin-count";
+      snapshot_resource: "checkin";
+    }
+  | {
+      event_name: "notification.delivered";
+      recovery_endpoint: "GET /operator/activities/:activityId/notifications";
+      snapshot_resource: "notification";
+    };
+
 export type CommandMeta = {
   idempotency_key: string;
 };
