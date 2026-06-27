@@ -854,7 +854,7 @@ function App() {
             ) : null}
 
             <div className={`management-grid management-grid--${activeSection}${selected ? '' : ' management-grid--empty'}`}>
-              <section className={`panel panel--split panel--overview${selected ? '' : ' panel--intro'}`}>
+              <section className={`panel panel--split panel--overview panel--activity${selected ? '' : ' panel--intro'}`}>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Activity</div>
@@ -888,7 +888,7 @@ function App() {
               {selected ? (
                 <>
 
-              <section className='panel panel--split panel--sessions'>
+              <section className='panel panel--split panel--sessions panel--session-list'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Sessions</div>
@@ -922,7 +922,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--pages'>
+              <section className='panel panel--split panel--pages panel--page-config'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Page Config</div>
@@ -953,7 +953,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--pages'>
+              <section className='panel panel--split panel--pages panel--blocks'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Blocks</div>
@@ -977,7 +977,7 @@ function App() {
                 <Textarea value={blockForm.config} onChange={(value) => setBlockForm((form) => ({ ...form, config: String(value) }))} autosize={{ minRows: 5, maxRows: 10 }} />
               </section>
 
-              <section className='panel panel--split panel--pages'>
+              <section className='panel panel--split panel--pages panel--templates'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Activity Templates</div>
@@ -1008,7 +1008,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--communications span-2'>
+              <section className='panel panel--split panel--communications panel--notifications'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Notifications</div>
@@ -1064,7 +1064,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--brands'>
+              <section className='panel panel--split panel--brands panel--organizers'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Organizers</div>
@@ -1090,7 +1090,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--brands'>
+              <section className='panel panel--split panel--brands panel--sponsors'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Sponsors</div>
@@ -1114,7 +1114,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--expo'>
+              <section className='panel panel--split panel--expo panel--expo-booths'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Expo Booths</div>
@@ -1162,7 +1162,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--brands'>
+              <section className='panel panel--split panel--brands panel--speakers'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Speakers</div>
@@ -1188,7 +1188,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--brands'>
+              <section className='panel panel--split panel--brands panel--activity-organizers'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Activity Organizers</div>
@@ -1214,7 +1214,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--sessions'>
+              <section className='panel panel--split panel--sessions panel--session-speakers'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Session Speakers</div>
@@ -1250,7 +1250,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--responses span-2'>
+              <section className='panel panel--split panel--responses panel--registration-submissions'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Registration Submissions</div>
@@ -1271,7 +1271,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--responses span-2'>
+              <section className='panel panel--split panel--responses panel--survey-responses'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Survey Responses</div>
@@ -1322,7 +1322,7 @@ function App() {
                 ) : null}
               </section>
 
-              <section className='panel panel--split panel--overview span-2'>
+              <section className='panel panel--split panel--access panel--staff-grants'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Staff Grants</div>
@@ -1356,7 +1356,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--access span-2'>
+              <section className='panel panel--split panel--access panel--operator-grants'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Operator Grants</div>
@@ -1390,7 +1390,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split panel--access span-2'>
+              <section className='panel panel--split panel--overview panel--publications'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Publications</div>
