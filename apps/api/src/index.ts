@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import { createAuthingVerifier } from "./auth/authing";
@@ -73,6 +74,15 @@ const database = createDb(env);
 const verifier = createAuthingVerifier(env);
 const realtime = createRedisRealtimePublisher(env);
 const app = new Hono();
+
+app.use(
+  "*",
+  cors({
+    origin: ["http://127.0.0.1:5174", "http://localhost:5174"],
+    allowHeaders: ["content-type", "authorization", "idempotency-key"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  }),
+);
 
 const checkinCommandBodySchema = z.object({
   session_id: z.string().min(1),

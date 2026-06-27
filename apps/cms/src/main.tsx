@@ -11,7 +11,7 @@ type ApiEnvelope<T> = { data: T; meta?: Record<string, unknown> } | { error: { c
 type StaffGrantResult = { grant: StaffGrant; user: User }
 type TenantResourceKind = 'organizers' | 'sponsors' | 'speakers'
 
-const defaultApiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
+const defaultApiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000'
 const idempotencyPrefix = () => `cms_${Date.now()}_${crypto.randomUUID()}`
 
 function isError<T>(value: ApiEnvelope<T>): value is { error: { code: string; message: string } } {
