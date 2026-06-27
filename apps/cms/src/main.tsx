@@ -1,7 +1,27 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { Button, Input, Layout, MessagePlugin, Select, Switch, Tag, Textarea, Typography } from 'tdesign-react'
-import type { Activity, ActivityOrganizer, ActivityPublication, ExpoBooth, Organizer, PageConfig, Session, SessionSpeaker, Speaker, Sponsor, StaffGrant, User } from '@eventos/contracts'
+import type {
+  Activity,
+  ActivityOrganizer,
+  ActivityPublication,
+  ActivityTemplate,
+  ExpoBooth,
+  Notification,
+  OperatorGrant,
+  Organizer,
+  PageConfig,
+  RegistrationSubmission,
+  Session,
+  SessionSpeaker,
+  Speaker,
+  Sponsor,
+  StaffGrant,
+  Survey,
+  SurveyAnswer,
+  SurveyResponse,
+  User,
+} from '@eventos/contracts'
 import 'tdesign-react/es/style/index.css'
 import './styles.css'
 
@@ -9,7 +29,21 @@ const { Header, Aside, Content } = Layout
 
 type ApiEnvelope<T> = { data: T; meta?: Record<string, unknown> } | { error: { code: string; message: string } }
 type StaffGrantResult = { grant: StaffGrant; user: User }
+type OperatorGrantResult = { grant: OperatorGrant; user: User }
+type SurveyResponseAnswers = { response: SurveyResponse; answers: SurveyAnswer[] }
 type TenantResourceKind = 'organizers' | 'sponsors' | 'speakers'
+type WorkspaceSection = 'overview' | 'sessions' | 'pages' | 'communications' | 'brands' | 'expo' | 'responses' | 'access'
+
+const workspaceSections: Array<{ id: WorkspaceSection; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'sessions', label: 'Sessions' },
+  { id: 'pages', label: 'Pages' },
+  { id: 'communications', label: 'Comms' },
+  { id: 'brands', label: 'Brands' },
+  { id: 'expo', label: 'Expo' },
+  { id: 'responses', label: 'Responses' },
+  { id: 'access', label: 'Access' },
+]
 
 const defaultApiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000'
 const idempotencyPrefix = () => `cms_${Date.now()}_${crypto.randomUUID()}`
@@ -56,6 +90,22 @@ function fromLocalDateTime(value: string) {
   return new Date(value).toISOString()
 }
 
+function statusTheme(status?: Activity['status']) {
+  if (status === 'published') return 'success'
+  if (status === 'archived') return 'warning'
+  return 'default'
+}
+
+function compactDateTime(value?: string) {
+  if (!value) return 'Not set'
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
 function App() {
   const [apiBase, setApiBase] = useState(defaultApiBase)
   const [token, setToken] = useState(localStorage.getItem('eventos.cms.authing_token') ?? '')
@@ -65,6 +115,13 @@ function App() {
   const [pageConfigs, setPageConfigs] = useState<PageConfig[]>([])
   const [publications, setPublications] = useState<ActivityPublication[]>([])
   const [staffGrants, setStaffGrants] = useState<StaffGrant[]>([])
+  const [operatorGrants, setOperatorGrants] = useState<OperatorGrant[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [activityTemplates, setActivityTemplates] = useState<ActivityTemplate[]>([])
+  const [registrationSubmissions, setRegistrationSubmissions] = useState<RegistrationSubmission[]>([])
+  const [surveys, setSurveys] = useState<Survey[]>([])
+  const [surveyResponses, setSurveyResponses] = useState<SurveyResponse[]>([])
+  const [surveyAnswers, setSurveyAnswers] = useState<SurveyResponseAnswers>()
   const [activityOrganizers, setActivityOrganizers] = useState<ActivityOrganizer[]>([])
   const [sessionSpeakers, setSessionSpeakers] = useState<SessionSpeaker[]>([])
   const [expoBooths, setExpoBooths] = useState<ExpoBooth[]>([])
@@ -73,7 +130,9 @@ function App() {
   const [speakers, setSpeakers] = useState<Speaker[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
+  const [activeSection, setActiveSection] = useState<WorkspaceSection>('overview')
   const selected = activities.find((activity) => activity.id === selectedId)
+  const latestPublication = publications[0]
 
   const draft = useMemo(
     () => ({
@@ -106,6 +165,26 @@ function App() {
     authing_user_id: '',
     display_name: '',
   })
+  const [operatorGrantForm, setOperatorGrantForm] = useState({
+    authing_user_id: '',
+    display_name: '',
+  })
+  const [notificationForm, setNotificationForm] = useState({
+    title: '',
+    content: '',
+    channel: 'miniapp',
+    audience_rule: JSON.stringify({ type: 'all_confirmed_participants' }, null, 2),
+    status: 'draft',
+    scheduled_at: '',
+  })
+  const [templateForm, setTemplateForm] = useState({
+    id: '',
+    name: '',
+    template_key: '',
+    description: '',
+    config: '{}',
+  })
+  const [surveyResponseFilter, setSurveyResponseFilter] = useState('')
   const [organizerForm, setOrganizerForm] = useState({ name: '', website_url: '', contact: '' })
   const [sponsorForm, setSponsorForm] = useState({ name: '', website_url: '', description: '' })
   const [speakerForm, setSpeakerForm] = useState({ name: '', title: '', organization: '' })
@@ -141,6 +220,7 @@ function App() {
   async function loadWorkspace() {
     await loadActivities()
     await loadTenantResources()
+    await loadActivityTemplates()
   }
 
   async function loadTenantResources() {
@@ -159,19 +239,56 @@ function App() {
     }
   }
 
+  async function loadActivityTemplates() {
+    const rows = await run(() => apiRequest<ActivityTemplate[]>({ path: '/operator/activity-templates', token, apiBase }))
+    if (rows) setActivityTemplates(rows)
+  }
+
   async function loadActivityDetail(activityId: string) {
     const detail = await run(async () => {
-      const [activityRows, sessionRows, pageRows, publicationRows, staffRows, activityOrganizerRows, expoBoothRows] = await Promise.all([
+      const [
+        activityRows,
+        sessionRows,
+        pageRows,
+        publicationRows,
+        staffRows,
+        operatorRows,
+        notificationRows,
+        registrationSubmissionRows,
+        surveyRows,
+        surveyResponseRows,
+        activityOrganizerRows,
+        expoBoothRows,
+      ] = await Promise.all([
         apiRequest<Activity>({ path: `/operator/activities/${activityId}`, token, apiBase }),
         apiRequest<Session[]>({ path: `/operator/activities/${activityId}/sessions`, token, apiBase }),
         apiRequest<PageConfig[]>({ path: `/operator/activities/${activityId}/page-configs`, token, apiBase }),
         apiRequest<ActivityPublication[]>({ path: `/operator/activities/${activityId}/publications`, token, apiBase }),
         apiRequest<StaffGrant[]>({ path: `/operator/activities/${activityId}/staff-grants`, token, apiBase }),
+        apiRequest<OperatorGrant[]>({ path: `/operator/activities/${activityId}/operator-grants`, token, apiBase }),
+        apiRequest<Notification[]>({ path: `/operator/activities/${activityId}/notifications`, token, apiBase }),
+        apiRequest<RegistrationSubmission[]>({ path: `/operator/activities/${activityId}/registration-submissions`, token, apiBase }),
+        apiRequest<Survey[]>({ path: `/operator/activities/${activityId}/surveys`, token, apiBase }),
+        apiRequest<SurveyResponse[]>({ path: `/operator/activities/${activityId}/survey-responses`, token, apiBase }),
         apiRequest<ActivityOrganizer[]>({ path: `/operator/activities/${activityId}/organizers`, token, apiBase }),
         apiRequest<ExpoBooth[]>({ path: `/operator/activities/${activityId}/expo-booths`, token, apiBase }),
       ])
       const speakerRows = (await Promise.all(sessionRows.map((session) => apiRequest<SessionSpeaker[]>({ path: `/operator/sessions/${session.id}/speakers`, token, apiBase })))).flat()
-      return { activityRows, sessionRows, pageRows, publicationRows, staffRows, activityOrganizerRows, expoBoothRows, speakerRows }
+      return {
+        activityRows,
+        sessionRows,
+        pageRows,
+        publicationRows,
+        staffRows,
+        operatorRows,
+        notificationRows,
+        registrationSubmissionRows,
+        surveyRows,
+        surveyResponseRows,
+        activityOrganizerRows,
+        expoBoothRows,
+        speakerRows,
+      }
     })
     if (detail) {
       setActivities((current) => current.map((item) => (item.id === detail.activityRows.id ? detail.activityRows : item)))
@@ -179,6 +296,12 @@ function App() {
       setPageConfigs(detail.pageRows)
       setPublications(detail.publicationRows)
       setStaffGrants(detail.staffRows)
+      setOperatorGrants(detail.operatorRows)
+      setNotifications(detail.notificationRows)
+      setRegistrationSubmissions(detail.registrationSubmissionRows)
+      setSurveys(detail.surveyRows)
+      setSurveyResponses(detail.surveyResponseRows)
+      setSurveyAnswers(undefined)
       setActivityOrganizers(detail.activityOrganizerRows)
       setExpoBooths(detail.expoBoothRows)
       setSessionSpeakers(detail.speakerRows)
@@ -196,6 +319,7 @@ function App() {
     if (token) {
       void loadActivities()
       void loadTenantResources()
+      void loadActivityTemplates()
     }
   }, [])
 
@@ -348,6 +472,168 @@ function App() {
     }
   }
 
+  async function disableStaffGrant(grant: StaffGrant) {
+    if (!selected) return
+    const updated = await run(() =>
+      apiRequest<StaffGrant>({
+        path: `/operator/staff-grants/${grant.id}/disable`,
+        method: 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body: {},
+      }),
+    )
+    if (updated) {
+      setStaffGrants((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+    }
+  }
+
+  async function upsertOperatorGrant() {
+    if (!selected) return
+    const result = await run(() =>
+      apiRequest<OperatorGrantResult>({
+        path: `/operator/activities/${selected.id}/operator-grants`,
+        method: 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body: {
+          authing_user_id: operatorGrantForm.authing_user_id,
+          display_name: operatorGrantForm.display_name,
+        },
+      }),
+    )
+    if (result) {
+      setOperatorGrantForm({ authing_user_id: '', display_name: '' })
+      void loadActivityDetail(selected.id)
+      void MessagePlugin.success('Operator grant saved')
+    }
+  }
+
+  async function disableOperatorGrant(grant: OperatorGrant) {
+    if (!selected) return
+    const updated = await run(() =>
+      apiRequest<OperatorGrant>({
+        path: `/operator/operator-grants/${grant.id}/disable`,
+        method: 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body: {},
+      }),
+    )
+    if (updated) {
+      setOperatorGrants((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+    }
+  }
+
+  function templateBody() {
+    return {
+      name: templateForm.name,
+      template_key: templateForm.template_key,
+      description: templateForm.description || undefined,
+      config: JSON.parse(templateForm.config) as Record<string, unknown>,
+    }
+  }
+
+  async function saveActivityTemplate() {
+    const template = await run(() =>
+      apiRequest<ActivityTemplate>({
+        path: templateForm.id ? `/operator/activity-templates/${templateForm.id}` : '/operator/activity-templates',
+        method: templateForm.id ? 'PATCH' : 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body: templateBody(),
+      }),
+    )
+    if (template) {
+      setTemplateForm({ id: '', name: '', template_key: '', description: '', config: '{}' })
+      void loadActivityTemplates()
+    }
+  }
+
+  function editActivityTemplate(template: ActivityTemplate) {
+    setTemplateForm({
+      id: template.id,
+      name: template.name,
+      template_key: template.template_key,
+      description: template.description ?? '',
+      config: JSON.stringify(template.config, null, 2),
+    })
+  }
+
+  function notificationBody(status?: Notification['status']) {
+    const scheduledAt = notificationForm.scheduled_at ? fromLocalDateTime(notificationForm.scheduled_at) : undefined
+    return {
+      title: notificationForm.title,
+      content: notificationForm.content,
+      channel: notificationForm.channel,
+      audience_rule: JSON.parse(notificationForm.audience_rule) as Record<string, unknown>,
+      status: status ?? notificationForm.status,
+      ...(scheduledAt ? { scheduled_at: scheduledAt } : {}),
+    }
+  }
+
+  async function createNotification() {
+    if (!selected) return
+    const notification = await run(() =>
+      apiRequest<Notification>({
+        path: `/operator/activities/${selected.id}/notifications`,
+        method: 'POST',
+        token,
+        apiBase,
+        idempotency: true,
+        body: notificationBody(),
+      }),
+    )
+    if (notification) {
+      setNotificationForm({
+        title: '',
+        content: '',
+        channel: 'miniapp',
+        audience_rule: JSON.stringify({ type: 'all_confirmed_participants' }, null, 2),
+        status: 'draft',
+        scheduled_at: '',
+      })
+      setNotifications((current) => [notification, ...current])
+    }
+  }
+
+  async function updateNotificationStatus(notification: Notification, status: Notification['status']) {
+    if (!selected) return
+    const updated = await run(() =>
+      apiRequest<Notification>({
+        path: `/operator/notifications/${notification.id}`,
+        method: 'PATCH',
+        token,
+        apiBase,
+        idempotency: true,
+        body: { status },
+      }),
+    )
+    if (updated) {
+      setNotifications((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+    }
+  }
+
+  async function loadSurveyResponses(surveyId?: string) {
+    if (!selected) return
+    const query = surveyId ? `?survey_id=${encodeURIComponent(surveyId)}` : ''
+    const rows = await run(() => apiRequest<SurveyResponse[]>({ path: `/operator/activities/${selected.id}/survey-responses${query}`, token, apiBase }))
+    if (rows) {
+      setSurveyResponseFilter(surveyId ?? '')
+      setSurveyResponses(rows)
+      setSurveyAnswers(undefined)
+    }
+  }
+
+  async function loadSurveyAnswers(responseId: string) {
+    const detail = await run(() => apiRequest<SurveyResponseAnswers>({ path: `/operator/survey-responses/${responseId}/answers`, token, apiBase }))
+    if (detail) setSurveyAnswers(detail)
+  }
+
   async function createTenantResource(kind: TenantResourceKind) {
     const body =
       kind === 'organizers'
@@ -460,33 +746,45 @@ function App() {
 
   return (
     <Layout className='app-shell'>
-      <Aside className='sidebar'>
+      <Aside className='sidebar activity-rail'>
         <div className='brand'>
-          <div className='brand-mark'>E</div>
+          <div className='brand-mark'>EO</div>
           <div>
             <div className='brand-name'>Event OS</div>
             <div className='brand-subtitle'>Operator CMS</div>
           </div>
         </div>
 
-        <div className='sidebar-section'>
-          <div className='section-label'>Authing</div>
+        <div className='sidebar-section connection-panel'>
+          <div className='section-label'>Authing session</div>
           <Input value={apiBase} onChange={(value) => setApiBase(String(value))} placeholder='API base URL' />
-          <Textarea value={token} onChange={(value) => setToken(String(value))} autosize={{ minRows: 4, maxRows: 6 }} placeholder='Bearer token' />
-          <Button theme='primary' loading={loading} onClick={loadWorkspace}>
-            Load Workspace
+          <Textarea value={token} onChange={(value) => setToken(String(value))} autosize={{ minRows: 3, maxRows: 5 }} placeholder='Bearer token' />
+          <Button theme='primary' loading={loading} disabled={!token} onClick={loadWorkspace}>
+            Load workspace
           </Button>
         </div>
 
         <div className='sidebar-section sidebar-section--fill'>
-          <div className='section-label'>Activities</div>
+          <div className='rail-heading'>
+            <div className='section-label'>Activities</div>
+            <span>{activities.length}</span>
+          </div>
           <nav className='nav-list'>
-            {activities.map((activity) => (
-              <button key={activity.id} className={`nav-item${activity.id === selectedId ? ' nav-item--active' : ''}`} type='button' onClick={() => setSelectedId(activity.id)}>
-                <span className='nav-item__label'>{activity.name}</span>
-                <span className='nav-item__value'>{activity.status}</span>
-              </button>
-            ))}
+            {activities.length ? (
+              activities.map((activity) => (
+                <button key={activity.id} className={`nav-item${activity.id === selectedId ? ' nav-item--active' : ''}`} type='button' onClick={() => setSelectedId(activity.id)}>
+                  <span className='nav-item__label'>{activity.name}</span>
+                  <span className='nav-item__value'>
+                    <Tag theme={statusTheme(activity.status)} variant='light'>
+                      {activity.status}
+                    </Tag>
+                    <span>{compactDateTime(activity.start_time)}</span>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className='rail-empty'>Enter an operator token and load the workspace.</div>
+            )}
           </nav>
         </div>
       </Aside>
@@ -494,14 +792,17 @@ function App() {
       <Layout className='workspace'>
         <Header className='topbar'>
           <div className='topbar-left'>
-            <Tag theme={selected?.status === 'published' ? 'success' : selected?.status === 'archived' ? 'warning' : 'default'} variant='light'>
+            <Tag theme={statusTheme(selected?.status)} variant='light'>
               {selected?.status ?? 'No Activity'}
             </Tag>
-            <Typography.Text className='topbar-kicker'>{selected?.id ?? 'Select or create an Activity'}</Typography.Text>
+            <div className='topbar-title'>
+              <strong>{selected?.name ?? 'Select or create an Activity'}</strong>
+              <span>{selected?.id ?? 'Draft changes stay in CMS until publication.'}</span>
+            </div>
           </div>
           <div className='topbar-actions'>
             <Button loading={loading} onClick={createActivity}>
-              Create
+              Create Activity
             </Button>
             <Button theme='primary' disabled={!selected} loading={loading} onClick={publishActivity}>
               Publish
@@ -510,19 +811,46 @@ function App() {
         </Header>
 
         <Content className='content'>
-          <section className='canvas'>
+          <main className='canvas workbench'>
             <div className='canvas-head'>
               <div>
-                <p className='eyebrow'>Operator Control</p>
-                <Typography.Title level='h1' className='hero-title'>
-                  Activity draft, resources, and publication.
+                <p className='eyebrow'>Operator control</p>
+                <Typography.Title level='h1' className='hero-title page-title'>
+                  {selected ? selected.name : 'Activity workspace'}
                 </Typography.Title>
+                <p className='canvas-subtitle'>{selected ? `${compactDateTime(selected.start_time)} to ${compactDateTime(selected.end_time)} / ${selected.timezone}` : 'Create an Activity or load an existing tenant workspace to start editing.'}</p>
+              </div>
+              <div className='metric-grid'>
+                <div className='metric'>
+                  <span>Sessions</span>
+                  <strong>{sessions.length}</strong>
+                </div>
+                <div className='metric'>
+                  <span>Pages</span>
+                  <strong>{pageConfigs.length}</strong>
+                </div>
+                <div className='metric'>
+                  <span>Staff</span>
+                  <strong>{staffGrants.length}</strong>
+                </div>
+                <div className='metric'>
+                  <span>Published</span>
+                  <strong>{latestPublication ? `v${latestPublication.version}` : '-'}</strong>
+                </div>
               </div>
               {error ? <div className='error-strip'>{error}</div> : null}
             </div>
 
-            <div className={`management-grid${selected ? '' : ' management-grid--empty'}`}>
-              <section className={`panel panel--split${selected ? '' : ' panel--intro'}`}>
+            <nav className='section-tabs' aria-label='Workspace sections'>
+              {workspaceSections.map((section) => (
+                <button key={section.id} className={`section-tab${activeSection === section.id ? ' section-tab--active' : ''}`} type='button' onClick={() => setActiveSection(section.id)}>
+                  {section.label}
+                </button>
+              ))}
+            </nav>
+
+            <div className={`management-grid management-grid--${activeSection}${selected ? '' : ' management-grid--empty'}`}>
+              <section className={`panel panel--split panel--overview${selected ? '' : ' panel--intro'}`}>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Activity</div>
@@ -556,7 +884,7 @@ function App() {
               {selected ? (
                 <>
 
-              <section className='panel panel--split'>
+              <section className='panel panel--split panel--sessions'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Sessions</div>
@@ -590,7 +918,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split'>
+              <section className='panel panel--split panel--pages'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Page Config</div>
@@ -621,7 +949,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split'>
+              <section className='panel panel--split panel--pages'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Blocks</div>
@@ -645,7 +973,94 @@ function App() {
                 <Textarea value={blockForm.config} onChange={(value) => setBlockForm((form) => ({ ...form, config: String(value) }))} autosize={{ minRows: 5, maxRows: 10 }} />
               </section>
 
-              <section className='panel panel--split'>
+              <section className='panel panel--split panel--pages'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Activity Templates</div>
+                    <div className='panel-title'>{activityTemplates.length} tenant blueprints</div>
+                  </div>
+                  <Button disabled={!templateForm.name || !templateForm.template_key} onClick={saveActivityTemplate}>
+                    {templateForm.id ? 'Update' : 'Create'}
+                  </Button>
+                </div>
+                <div className='form-grid'>
+                  <Input value={templateForm.name} onChange={(value) => setTemplateForm((form) => ({ ...form, name: String(value) }))} placeholder='Template name' />
+                  <Input value={templateForm.template_key} onChange={(value) => setTemplateForm((form) => ({ ...form, template_key: String(value) }))} placeholder='template_key' />
+                </div>
+                <Input value={templateForm.description} onChange={(value) => setTemplateForm((form) => ({ ...form, description: String(value) }))} placeholder='Description' />
+                <Textarea value={templateForm.config} onChange={(value) => setTemplateForm((form) => ({ ...form, config: String(value) }))} autosize={{ minRows: 4, maxRows: 8 }} placeholder='Config JSON, no business facts' />
+                <div className='feed-list compact'>
+                  {activityTemplates.map((template) => (
+                    <div key={template.id} className='feed-row'>
+                      <div>
+                        <div className='feed-row__title'>{template.name}</div>
+                        <div className='feed-row__meta'>{template.template_key} / {template.created_at}</div>
+                      </div>
+                      <Button variant='outline' onClick={() => editActivityTemplate(template)}>
+                        Edit
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className='panel panel--split panel--communications span-2'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Notifications</div>
+                    <div className='panel-title'>{notifications.length} Activity messages</div>
+                  </div>
+                  <Button disabled={!selected || !notificationForm.title || !notificationForm.content} onClick={createNotification}>
+                    Create
+                  </Button>
+                </div>
+                <div className='form-grid'>
+                  <Input value={notificationForm.title} onChange={(value) => setNotificationForm((form) => ({ ...form, title: String(value) }))} placeholder='Title' />
+                  <Select value={notificationForm.channel} onChange={(value) => setNotificationForm((form) => ({ ...form, channel: String(value) }))} options={[
+                    { label: 'Miniapp', value: 'miniapp' },
+                    { label: 'WeChat', value: 'wechat' },
+                    { label: 'SMS', value: 'sms' },
+                    { label: 'Email', value: 'email' },
+                  ]} />
+                </div>
+                <Textarea value={notificationForm.content} onChange={(value) => setNotificationForm((form) => ({ ...form, content: String(value) }))} autosize={{ minRows: 3, maxRows: 6 }} placeholder='Content' />
+                <div className='form-grid'>
+                  <Select value={notificationForm.status} onChange={(value) => setNotificationForm((form) => ({ ...form, status: String(value) }))} options={[
+                    { label: 'Draft', value: 'draft' },
+                    { label: 'Scheduled', value: 'scheduled' },
+                    { label: 'Sending', value: 'sending' },
+                    { label: 'Sent', value: 'sent' },
+                    { label: 'Cancelled', value: 'cancelled' },
+                  ]} />
+                  <input className='native-input' type='datetime-local' value={notificationForm.scheduled_at} onChange={(event) => setNotificationForm((form) => ({ ...form, scheduled_at: event.target.value }))} />
+                </div>
+                <Textarea value={notificationForm.audience_rule} onChange={(value) => setNotificationForm((form) => ({ ...form, audience_rule: String(value) }))} autosize={{ minRows: 3, maxRows: 7 }} placeholder='Audience rule JSON' />
+                <div className='feed-list compact'>
+                  {notifications.map((notification) => (
+                    <div key={notification.id} className='feed-row'>
+                      <div>
+                        <div className='feed-row__title'>{notification.title}</div>
+                        <div className='feed-row__meta'>{notification.channel} / {notification.status} / {notification.scheduled_at ?? notification.created_at}</div>
+                      </div>
+                      <div className='row-actions'>
+                        <Tag variant='light'>{notification.audience_rule.type}</Tag>
+                        {notification.status !== 'draft' ? (
+                          <Button variant='outline' onClick={() => updateNotificationStatus(notification, 'draft')}>
+                            Draft
+                          </Button>
+                        ) : null}
+                        {notification.status !== 'cancelled' ? (
+                          <Button theme='danger' variant='outline' onClick={() => updateNotificationStatus(notification, 'cancelled')}>
+                            Cancel
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className='panel panel--split panel--brands'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Organizers</div>
@@ -671,7 +1086,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split'>
+              <section className='panel panel--split panel--brands'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Sponsors</div>
@@ -695,7 +1110,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split'>
+              <section className='panel panel--split panel--expo'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Expo Booths</div>
@@ -743,7 +1158,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split'>
+              <section className='panel panel--split panel--brands'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Speakers</div>
@@ -769,7 +1184,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split'>
+              <section className='panel panel--split panel--brands'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Activity Organizers</div>
@@ -795,7 +1210,7 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split'>
+              <section className='panel panel--split panel--sessions'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Session Speakers</div>
@@ -831,7 +1246,79 @@ function App() {
                 </div>
               </section>
 
-              <section className='panel panel--split span-2'>
+              <section className='panel panel--split panel--responses span-2'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Registration Submissions</div>
+                    <div className='panel-title'>{registrationSubmissions.length} submitted forms</div>
+                  </div>
+                </div>
+                <div className='feed-list compact'>
+                  {registrationSubmissions.map((submission) => (
+                    <div key={submission.id} className='feed-row'>
+                      <div>
+                        <div className='feed-row__title'>{submission.projected_fields ? Object.values(submission.projected_fields).filter(Boolean).join(' / ') : submission.registration_id}</div>
+                        <div className='feed-row__meta'>{submission.submitted_at} / form {submission.form_version_id}</div>
+                        <div className='feed-row__meta'>{JSON.stringify(submission.answers)}</div>
+                      </div>
+                      <Tag variant='light'>Registration</Tag>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className='panel panel--split panel--responses span-2'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Survey Responses</div>
+                    <div className='panel-title'>{surveyResponses.length} responses</div>
+                  </div>
+                  <Button disabled={!selected} onClick={() => loadSurveyResponses(surveyResponseFilter || undefined)}>
+                    Refresh
+                  </Button>
+                </div>
+                <Select value={surveyResponseFilter} onChange={(value) => loadSurveyResponses(String(value) || undefined)} options={[
+                  { label: 'All Surveys', value: '' },
+                  ...surveys.map((survey) => ({ label: survey.title, value: survey.id })),
+                ]} />
+                <div className='feed-list compact'>
+                  {surveyResponses.map((response) => {
+                    const survey = surveys.find((item) => item.id === response.survey_id)
+                    return (
+                      <div key={response.id} className='feed-row'>
+                        <div>
+                          <div className='feed-row__title'>{survey?.title ?? response.survey_id}</div>
+                          <div className='feed-row__meta'>{response.submitted_at} / {response.target_type}{response.target_id ? ` / ${response.target_id}` : ''}</div>
+                        </div>
+                        <Button variant='outline' onClick={() => loadSurveyAnswers(response.id)}>
+                          Answers
+                        </Button>
+                      </div>
+                    )
+                  })}
+                </div>
+                {surveyAnswers ? (
+                  <div className='feed-list compact'>
+                    <div className='feed-row'>
+                      <div>
+                        <div className='feed-row__title'>Response {surveyAnswers.response.id}</div>
+                        <div className='feed-row__meta'>{surveyAnswers.answers.length} answers / participant {surveyAnswers.response.participant_id ?? 'anonymous'}</div>
+                      </div>
+                      <Tag variant='light'>{surveyAnswers.response.target_type}</Tag>
+                    </div>
+                    {surveyAnswers.answers.map((answer) => (
+                      <div key={answer.id} className='feed-row'>
+                        <div>
+                          <div className='feed-row__title'>{answer.question_id}</div>
+                          <div className='feed-row__meta'>{JSON.stringify(answer.value)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+
+              <section className='panel panel--split panel--overview span-2'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Staff Grants</div>
@@ -852,15 +1339,54 @@ function App() {
                         <div className='feed-row__title'>{grant.authing_user_id}</div>
                         <div className='feed-row__meta'>{grant.user_id} / {grant.created_at}</div>
                       </div>
-                      <Tag theme='primary' variant='light'>
-                        Staff
-                      </Tag>
+                      <div className='row-actions'>
+                        <Tag theme={grant.status === 'active' ? 'primary' : 'default'} variant='light'>
+                          {grant.status}
+                        </Tag>
+                        <Button theme='danger' variant='outline' disabled={grant.status === 'disabled'} onClick={() => disableStaffGrant(grant)}>
+                          Disable
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
               </section>
 
-              <section className='panel panel--split span-2'>
+              <section className='panel panel--split panel--access span-2'>
+                <div className='panel-head'>
+                  <div>
+                    <div className='panel-label'>Operator Grants</div>
+                    <div className='panel-title'>{operatorGrants.length} Activity-scoped Operators</div>
+                  </div>
+                  <Button disabled={!selected || !operatorGrantForm.authing_user_id} onClick={upsertOperatorGrant}>
+                    Grant
+                  </Button>
+                </div>
+                <div className='form-grid'>
+                  <Input value={operatorGrantForm.authing_user_id} onChange={(value) => setOperatorGrantForm((form) => ({ ...form, authing_user_id: String(value) }))} placeholder='Authing user subject' />
+                  <Input value={operatorGrantForm.display_name} onChange={(value) => setOperatorGrantForm((form) => ({ ...form, display_name: String(value) }))} placeholder='Display name' />
+                </div>
+                <div className='feed-list compact'>
+                  {operatorGrants.map((grant) => (
+                    <div key={grant.id} className='feed-row'>
+                      <div>
+                        <div className='feed-row__title'>{grant.authing_user_id}</div>
+                        <div className='feed-row__meta'>{grant.scope} / {grant.user_id} / {grant.created_at}</div>
+                      </div>
+                      <div className='row-actions'>
+                        <Tag theme={grant.status === 'active' ? 'primary' : 'default'} variant='light'>
+                          {grant.status}
+                        </Tag>
+                        <Button theme='danger' variant='outline' disabled={grant.status === 'disabled'} onClick={() => disableOperatorGrant(grant)}>
+                          Disable
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className='panel panel--split panel--access span-2'>
                 <div className='panel-head'>
                   <div>
                     <div className='panel-label'>Publications</div>
@@ -890,7 +1416,7 @@ function App() {
                 </section>
               )}
             </div>
-          </section>
+          </main>
         </Content>
       </Layout>
     </Layout>
