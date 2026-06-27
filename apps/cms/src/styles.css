@@ -248,6 +248,10 @@ body {
   min-height: 0;
 }
 
+.workbench--empty {
+  grid-template-rows: auto 1fr;
+}
+
 .canvas-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;

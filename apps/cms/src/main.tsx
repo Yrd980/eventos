@@ -811,7 +811,7 @@ function App() {
         </Header>
 
         <Content className='content'>
-          <main className='canvas workbench'>
+          <main className={`canvas workbench${selected ? '' : ' workbench--empty'}`}>
             <div className='canvas-head'>
               <div>
                 <p className='eyebrow'>Operator control</p>
@@ -820,34 +820,38 @@ function App() {
                 </Typography.Title>
                 <p className='canvas-subtitle'>{selected ? `${compactDateTime(selected.start_time)} to ${compactDateTime(selected.end_time)} / ${selected.timezone}` : 'Create an Activity or load an existing tenant workspace to start editing.'}</p>
               </div>
-              <div className='metric-grid'>
-                <div className='metric'>
-                  <span>Sessions</span>
-                  <strong>{sessions.length}</strong>
+              {selected ? (
+                <div className='metric-grid'>
+                  <div className='metric'>
+                    <span>Sessions</span>
+                    <strong>{sessions.length}</strong>
+                  </div>
+                  <div className='metric'>
+                    <span>Pages</span>
+                    <strong>{pageConfigs.length}</strong>
+                  </div>
+                  <div className='metric'>
+                    <span>Staff</span>
+                    <strong>{staffGrants.length}</strong>
+                  </div>
+                  <div className='metric'>
+                    <span>Published</span>
+                    <strong>{latestPublication ? `v${latestPublication.version}` : '-'}</strong>
+                  </div>
                 </div>
-                <div className='metric'>
-                  <span>Pages</span>
-                  <strong>{pageConfigs.length}</strong>
-                </div>
-                <div className='metric'>
-                  <span>Staff</span>
-                  <strong>{staffGrants.length}</strong>
-                </div>
-                <div className='metric'>
-                  <span>Published</span>
-                  <strong>{latestPublication ? `v${latestPublication.version}` : '-'}</strong>
-                </div>
-              </div>
+              ) : null}
               {error ? <div className='error-strip'>{error}</div> : null}
             </div>
 
-            <nav className='section-tabs' aria-label='Workspace sections'>
-              {workspaceSections.map((section) => (
-                <button key={section.id} className={`section-tab${activeSection === section.id ? ' section-tab--active' : ''}`} type='button' onClick={() => setActiveSection(section.id)}>
-                  {section.label}
-                </button>
-              ))}
-            </nav>
+            {selected ? (
+              <nav className='section-tabs' aria-label='Workspace sections'>
+                {workspaceSections.map((section) => (
+                  <button key={section.id} className={`section-tab${activeSection === section.id ? ' section-tab--active' : ''}`} type='button' onClick={() => setActiveSection(section.id)}>
+                    {section.label}
+                  </button>
+                ))}
+              </nav>
+            ) : null}
 
             <div className={`management-grid management-grid--${activeSection}${selected ? '' : ' management-grid--empty'}`}>
               <section className={`panel panel--split panel--overview${selected ? '' : ' panel--intro'}`}>
