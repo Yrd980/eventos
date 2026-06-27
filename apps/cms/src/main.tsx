@@ -138,6 +138,11 @@ function App() {
     }
   }
 
+  async function loadWorkspace() {
+    await loadActivities()
+    await loadTenantResources()
+  }
+
   async function loadTenantResources() {
     const rows = await run(async () => {
       const [organizerRows, sponsorRows, speakerRows] = await Promise.all([
@@ -468,7 +473,7 @@ function App() {
           <div className='section-label'>Authing</div>
           <Input value={apiBase} onChange={(value) => setApiBase(String(value))} placeholder='API base URL' />
           <Textarea value={token} onChange={(value) => setToken(String(value))} autosize={{ minRows: 4, maxRows: 6 }} placeholder='Bearer token' />
-          <Button theme='primary' loading={loading} onClick={loadActivities}>
+          <Button theme='primary' loading={loading} onClick={loadWorkspace}>
             Load Workspace
           </Button>
         </div>
@@ -881,7 +886,7 @@ function App() {
                 <section className='empty-state'>
                   <div className='panel-label'>Workspace</div>
                   <div className='empty-state__title'>No Activity selected</div>
-                  <p>Create an Activity or load an operator workspace, then resource panels for Sessions, Page Config, Sponsors, Expo Booths, Staff Grants, and Publications will appear here.</p>
+                  <p>Run db:migrate and db:seed:smoke, start the API, enter the local dev token, then Load Workspace to open the seeded Activity and resource panels.</p>
                 </section>
               )}
             </div>

@@ -53,6 +53,32 @@ function normalizeDomain(domain: string) {
 }
 
 export function createAuthingVerifier(env: ApiEnv): AuthingVerifier {
+  if (env.nodeEnv === "development" && env.devAuth.enabled) {
+    return {
+      async verifyAuthorizationHeader(header) {
+        if (!header?.startsWith("Bearer ")) {
+          throw new DomainError("AUTHENTICATION_REQUIRED", "Authing bearer token is required", { status: 401 });
+        }
+
+        const token = header.slice("Bearer ".length);
+        if (token !== env.devAuth.token) {
+          throw new DomainError("AUTHENTICATION_REQUIRED", "Authing bearer token is invalid for local development", { status: 401 });
+        }
+
+        return {
+          authing_user_id: env.devAuth.authingUserId,
+          display_name: "Development Operator",
+          org_ids: [env.devAuth.authingOrgId],
+          raw_claims: {
+            sub: env.devAuth.authingUserId,
+            org_id: env.devAuth.authingOrgId,
+            eventos_dev_auth: true,
+          },
+        };
+      },
+    };
+  }
+
   if (!env.authing.domain) {
     return {
       async verifyAuthorizationHeader(header) {

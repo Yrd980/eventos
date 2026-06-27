@@ -1,4 +1,5 @@
 export type ApiEnv = {
+  nodeEnv: string;
   port: number;
   postgres: {
     host: string;
@@ -12,6 +13,12 @@ export type ApiEnv = {
     domain?: string;
     appId?: string;
     audience?: string;
+  };
+  devAuth: {
+    enabled: boolean;
+    token: string;
+    authingUserId: string;
+    authingOrgId: string;
   };
   redis: {
     host: string;
@@ -38,6 +45,7 @@ function readNumber(name: string, defaultValue: number) {
 
 export function readEnv(): ApiEnv {
   return {
+    nodeEnv: process.env.NODE_ENV ?? "production",
     port: readNumber("PORT", readNumber("API_PORT", 3000)),
     postgres: {
       host: process.env.POSTGRES_HOST ?? "localhost",
@@ -51,6 +59,12 @@ export function readEnv(): ApiEnv {
       domain: process.env.AUTHING_DOMAIN,
       appId: process.env.AUTHING_APP_ID,
       audience: process.env.AUTHING_AUDIENCE,
+    },
+    devAuth: {
+      enabled: process.env.EVENTOS_DEV_AUTH_ENABLED === "true",
+      token: process.env.EVENTOS_DEV_AUTH_TOKEN ?? "dev-operator-token",
+      authingUserId: process.env.EVENTOS_DEV_AUTH_USER_ID ?? "authing-dev-operator",
+      authingOrgId: process.env.EVENTOS_DEV_AUTH_ORG_ID ?? "authing-dev-org",
     },
     redis: {
       host: process.env.REDIS_HOST ?? "localhost",
