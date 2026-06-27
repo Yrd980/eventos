@@ -15,7 +15,7 @@ Monorepo for the Event OS mini program, API, CMS admin, and realtime service.
 ## Local development
 
 1. Copy `.env.example` to `.env`
-2. For local CMS/API smoke work, set these dev-only values in `.env`:
+2. For local manual CMS/API testing, set these dev-only values in `.env` when you need the local token path:
 
 ```dotenv
 NODE_ENV=development
@@ -29,10 +29,9 @@ EVENTOS_DEV_AUTH_ORG_ID=authing-dev-org
 
 3. Run `docker compose up -d postgres redis`
 4. Run `bun run db:migrate`
-5. Run `bun run db:seed:smoke`
-6. Start the API with `bun run dev:api`
-7. Start the CMS with `bun run dev:cms`
-8. Open the CMS, set API Base to `http://localhost:3000`, set token to `dev-operator-token`, then click `Load Workspace`
+5. Start the API with `bun run dev:api`
+6. Start the CMS with `bun run dev:cms`
+7. Open the CMS, set API Base to `http://localhost:3000`, set token to `dev-operator-token`, then click `Load Workspace`
 
 The dev auth token is local-only. It works only when `NODE_ENV=development` and `EVENTOS_DEV_AUTH_ENABLED=true`; when disabled, the API continues to require real Authing tokens and claims.
 

@@ -886,7 +886,7 @@ function App() {
                 <section className='empty-state'>
                   <div className='panel-label'>Workspace</div>
                   <div className='empty-state__title'>No Activity selected</div>
-                  <p>Run db:migrate and db:seed:smoke, start the API, enter the local dev token, then Load Workspace to open the seeded Activity and resource panels.</p>
+                  <p>Run db:migrate, start the API, enter an operator token, then Load Workspace to open available Activities and resource panels.</p>
                 </section>
               )}
             </div>

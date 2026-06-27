@@ -5,7 +5,6 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "db:migrate": "bun scripts/migrate.ts",
-    "db:seed:smoke": "bun scripts/seed-smoke.ts",
     "typecheck": "bunx tsc --noEmit"
   },
   "dependencies": {

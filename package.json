@@ -12,7 +12,6 @@
     "dev:cms": "bun --filter @eventos/cms dev",
     "dev:web": "bun --filter @eventos/web-miniapp dev",
     "db:migrate": "bun --filter @eventos/api db:migrate",
-    "db:seed:smoke": "bun --filter @eventos/api db:seed:smoke",
     "typecheck": "bun tsc -b",
     "lint": "bunx eslint .",
     "format": "bunx prettier --write ."
