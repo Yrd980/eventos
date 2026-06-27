@@ -65,6 +65,7 @@ export type PublicationStatus = "published" | "superseded";
 export type ExpoBoothStatus = "visible" | "hidden";
 export type LiveEntryStatus = "draft" | "scheduled" | "live" | "ended" | "hidden";
 export type NotificationStatus = "draft" | "scheduled" | "sending" | "sent" | "cancelled";
+export type NotificationChannel = "miniapp" | "sms" | "email" | "wechat";
 
 export type User = {
   id: Id;
@@ -420,6 +421,7 @@ export type Notification = {
   activity_id: Id;
   title: string;
   content: string;
+  channel: NotificationChannel;
   audience_rule: NotificationAudienceRule;
   status: NotificationStatus;
   scheduled_at?: ISODateTime;

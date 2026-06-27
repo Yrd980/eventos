@@ -5,6 +5,7 @@ import type {
   BusinessResourceType,
   ExpoBooth,
   LiveEntry,
+  Notification,
   Organizer,
   PageConfig,
   RegistrationForm,
@@ -1018,6 +1019,117 @@ export async function upsertOperatorSurveyQuestion(input: {
   });
 
   return question;
+}
+
+async function assertNotificationAudienceRule(input: { repo: EventOsRepository; activityId: string; rule: Notification["audience_rule"] }) {
+  if (input.rule.type === "participants_with_session_in_my_agenda") {
+    await assertSessionActivityBoundary({ repo: input.repo, activityId: input.activityId, sessionId: input.rule.session_id });
+    return;
+  }
+
+  if (input.rule.type === "all_confirmed_participants" || input.rule.type === "staff" || input.rule.type === "custom_segment") {
+    return;
+  }
+
+  throw new DomainError("VALIDATION_FAILED", "Notification audience_rule is invalid", { status: 422 });
+}
+
+export async function listOperatorNotifications(input: { repo: EventOsRepository; actor: RequestActor; activityId: string }) {
+  await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: input.activityId });
+  return input.repo.listNotifications(input.activityId);
+}
+
+export async function createOperatorNotification(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  activityId: string;
+  body: {
+    title: string;
+    content: string;
+    channel: Notification["channel"];
+    audience_rule: Notification["audience_rule"];
+    status: Notification["status"];
+    scheduled_at?: string;
+  };
+}) {
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: input.activityId });
+  await assertNotificationAudienceRule({ repo: input.repo, activityId: activity.id, rule: input.body.audience_rule });
+  const scheduledAt = input.body.scheduled_at ? new Date(input.body.scheduled_at) : undefined;
+  if (input.body.status === "scheduled" && !scheduledAt) {
+    throw new DomainError("VALIDATION_FAILED", "scheduled_at is required for scheduled Notification", { status: 422 });
+  }
+  const notification = await input.repo.createNotification({
+    id: createId("ntf"),
+    activityId: activity.id,
+    title: input.body.title,
+    content: input.body.content,
+    channel: input.body.channel,
+    audienceRule: input.body.audience_rule,
+    status: input.body.status,
+    scheduledAt,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "notification.created",
+    resourceType: "notification",
+    resourceId: notification.id,
+    metadata: { channel: notification.channel, status: notification.status, audience_rule: notification.audience_rule },
+  });
+
+  return notification;
+}
+
+export async function updateOperatorNotification(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  notificationId: string;
+  body: {
+    title?: string;
+    content?: string;
+    channel?: Notification["channel"];
+    audience_rule?: Notification["audience_rule"];
+    status?: Notification["status"];
+    scheduled_at?: string | null;
+  };
+}) {
+  const existing = await input.repo.getNotification(input.notificationId);
+  if (!existing) {
+    throw new DomainError("VALIDATION_FAILED", "Notification was not found", { status: 404 });
+  }
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: existing.activity_id });
+  const audienceRule = input.body.audience_rule ?? existing.audience_rule;
+  await assertNotificationAudienceRule({ repo: input.repo, activityId: activity.id, rule: audienceRule });
+  const scheduledAt = input.body.scheduled_at === undefined ? undefined : input.body.scheduled_at === null ? null : new Date(input.body.scheduled_at);
+  const nextStatus = input.body.status ?? existing.status;
+  const nextScheduledAt = scheduledAt === undefined ? existing.scheduled_at : scheduledAt?.toISOString();
+  if (nextStatus === "scheduled" && !nextScheduledAt) {
+    throw new DomainError("VALIDATION_FAILED", "scheduled_at is required for scheduled Notification", { status: 422 });
+  }
+
+  const notification = await input.repo.updateNotification({
+    id: input.notificationId,
+    title: input.body.title,
+    content: input.body.content,
+    channel: input.body.channel,
+    audienceRule: input.body.audience_rule,
+    status: input.body.status,
+    scheduledAt,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "notification.updated",
+    resourceType: "notification",
+    resourceId: input.notificationId,
+    metadata: { channel: notification?.channel, status: notification?.status, audience_rule: notification?.audience_rule },
+  });
+
+  return notification;
 }
 
 function requirePublishValidation(condition: boolean, message: string, details?: Record<string, unknown>) {

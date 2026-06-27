@@ -11,6 +11,7 @@ import type {
   ExpoBooth,
   LiveEntry,
   MyAgendaItem,
+  Notification,
   Organizer,
   PageConfig,
   QRPass,
@@ -42,6 +43,7 @@ import {
   expoBooths,
   liveEntries,
   myAgendaItems,
+  notifications,
   blocks,
   operatorGrants,
   organizers,
@@ -396,6 +398,20 @@ function mapSurveyAnswer(row: typeof surveyAnswers.$inferSelect): SurveyAnswer {
     response_id: row.responseId,
     question_id: row.questionId,
     value: row.value,
+  };
+}
+
+function mapNotification(row: typeof notifications.$inferSelect): Notification {
+  return {
+    id: row.id,
+    activity_id: row.activityId,
+    title: row.title,
+    content: row.content,
+    channel: row.channel as Notification["channel"],
+    audience_rule: row.audienceRule as Notification["audience_rule"],
+    status: row.status as Notification["status"],
+    scheduled_at: row.scheduledAt ? iso(row.scheduledAt) : undefined,
+    created_at: iso(row.createdAt),
   };
 }
 
@@ -1339,6 +1355,70 @@ export function createRepository(db: DbSession) {
         })
         .returning();
       return mapBlock(rows[0]);
+    },
+
+    async listNotifications(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(notifications)
+          .where(eq(notifications.activityId, activityId))
+          .orderBy(desc(notifications.createdAt), notifications.id)
+      ).map(mapNotification);
+    },
+
+    async getNotification(notificationId: string) {
+      return first((await db.select().from(notifications).where(eq(notifications.id, notificationId)).limit(1)).map(mapNotification));
+    },
+
+    async createNotification(input: {
+      id: string;
+      activityId: string;
+      title: string;
+      content: string;
+      channel: Notification["channel"];
+      audienceRule: Notification["audience_rule"];
+      status: Notification["status"];
+      scheduledAt?: Date;
+    }) {
+      const rows = await db
+        .insert(notifications)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          title: input.title,
+          content: input.content,
+          channel: input.channel,
+          audienceRule: input.audienceRule,
+          status: input.status,
+          scheduledAt: input.scheduledAt,
+        })
+        .returning();
+      return mapNotification(rows[0]);
+    },
+
+    async updateNotification(input: {
+      id: string;
+      title?: string;
+      content?: string;
+      channel?: Notification["channel"];
+      audienceRule?: Notification["audience_rule"];
+      status?: Notification["status"];
+      scheduledAt?: Date | null;
+    }) {
+      const rows = await db
+        .update(notifications)
+        .set({
+          title: input.title,
+          content: input.content,
+          channel: input.channel,
+          audienceRule: input.audienceRule,
+          status: input.status,
+          scheduledAt: input.scheduledAt === undefined ? undefined : input.scheduledAt,
+        })
+        .where(eq(notifications.id, input.id))
+        .returning();
+      return first(rows.map(mapNotification));
     },
 
     async supersedeCurrentPublication(activityId: string) {

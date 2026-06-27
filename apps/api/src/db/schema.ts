@@ -456,6 +456,20 @@ export const blocks = pgTable("blocks", {
   displaySnapshot: jsonb("display_snapshot"),
 });
 
+export const notifications = pgTable("notifications", {
+  id: text("id").primaryKey(),
+  activityId: text("activity_id")
+    .notNull()
+    .references(() => activities.id),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  channel: text("channel").notNull().default("miniapp"),
+  audienceRule: jsonb("audience_rule").notNull(),
+  status: text("status").notNull(),
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const auditEvents = pgTable("audit_events", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").references(() => tenants.id),

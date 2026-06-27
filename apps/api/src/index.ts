@@ -14,11 +14,13 @@ import {
   createOperatorBlock,
   createOperatorExpoBooth,
   createOperatorLiveEntry,
+  createOperatorNotification,
   createOperatorTenantResource,
   createOperatorSurvey,
   grantOperatorStaff,
   createOperatorSession,
   listOperatorActivities,
+  listOperatorNotifications,
   listOperatorTenantResources,
   publishOperatorActivity,
   requireOperatorActivity,
@@ -26,6 +28,7 @@ import {
   updateOperatorActivity,
   updateOperatorExpoBooth,
   updateOperatorLiveEntry,
+  updateOperatorNotification,
   updateOperatorSession,
   updateOperatorSurvey,
   updateOperatorTenantResource,
@@ -196,6 +199,36 @@ const surveyQuestionBodySchema = z
   .refine((question) => (question.type === "single_choice" || question.type === "multiple_choice" ? Boolean(question.options?.length) : true), {
     message: "options are required for choice questions",
     path: ["options"],
+  });
+
+const notificationAudienceRuleSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("all_confirmed_participants") }),
+  z.object({ type: z.literal("participants_with_session_in_my_agenda"), session_id: z.string().min(1) }),
+  z.object({ type: z.literal("staff") }),
+  z.object({ type: z.literal("custom_segment"), segment_id: z.string().min(1) }),
+]);
+
+const notificationCreateBodySchema = z
+  .object({
+    title: z.string().min(1),
+    content: z.string().min(1),
+    channel: z.enum(["miniapp", "sms", "email", "wechat"]).default("miniapp"),
+    audience_rule: notificationAudienceRuleSchema,
+    status: z.enum(["draft", "scheduled", "sending", "sent", "cancelled"]).default("draft"),
+    scheduled_at: z.string().datetime().optional(),
+  })
+  .refine((body) => (body.status === "scheduled" ? Boolean(body.scheduled_at) : true), {
+    message: "scheduled_at is required when status is scheduled",
+    path: ["scheduled_at"],
+  });
+
+const notificationUpdateBodySchema = notificationCreateBodySchema
+  .extend({
+    scheduled_at: z.string().datetime().nullable().optional(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "At least one field is required",
   });
 
 function parseJsonBody<T>(schema: z.ZodType<T>, body: Record<string, unknown>) {
@@ -650,6 +683,57 @@ app.post("/operator/surveys/:surveyId/questions", async (c) =>
       request: { surveyId, body },
       execute: () => upsertOperatorSurveyQuestion({ repo, actor, surveyId, body }),
     });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/activities/:activityId/notifications", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listOperatorNotifications({ repo, actor, activityId })));
+  }),
+);
+
+app.post("/operator/activities/:activityId/notifications", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(notificationCreateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.notification.create",
+      resourceType: "notification",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => createOperatorNotification({ repo, actor, activityId, body }),
+    });
+
+    return c.json(success(result));
+  }),
+);
+
+app.patch("/operator/notifications/:notificationId", async (c) =>
+  withTransaction(async (repo) => {
+    const notificationId = c.req.param("notificationId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(notificationUpdateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.notification.update",
+      resourceType: "notification",
+      resourceId: notificationId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { notificationId, body },
+      execute: () => updateOperatorNotification({ repo, actor, notificationId, body }),
+    });
+
     return c.json(success(result));
   }),
 );
