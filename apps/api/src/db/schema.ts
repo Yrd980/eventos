@@ -239,6 +239,22 @@ export const registrations = pgTable(
   (table) => [unique("registrations_activity_participant_unique").on(table.activityId, table.participantId)],
 );
 
+export const registrationSubmissions = pgTable("registration_submissions", {
+  id: text("id").primaryKey(),
+  activityId: text("activity_id")
+    .notNull()
+    .references(() => activities.id),
+  registrationId: text("registration_id")
+    .notNull()
+    .references(() => registrations.id),
+  formVersionId: text("form_version_id")
+    .notNull()
+    .references(() => registrationForms.id),
+  answers: jsonb("answers").notNull().default({}),
+  projectedFields: jsonb("projected_fields"),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const qrPasses = pgTable(
   "qr_passes",
   {
@@ -380,6 +396,34 @@ export const surveyQuestions = pgTable(
   },
   (table) => [unique("survey_questions_survey_key_unique").on(table.surveyId, table.key)],
 );
+
+export const surveyResponses = pgTable("survey_responses", {
+  id: text("id").primaryKey(),
+  activityId: text("activity_id")
+    .notNull()
+    .references(() => activities.id),
+  surveyId: text("survey_id")
+    .notNull()
+    .references(() => surveys.id),
+  participantId: text("participant_id").references(() => participants.id),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id"),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const surveyAnswers = pgTable("survey_answers", {
+  id: text("id").primaryKey(),
+  activityId: text("activity_id")
+    .notNull()
+    .references(() => activities.id),
+  responseId: text("response_id")
+    .notNull()
+    .references(() => surveyResponses.id),
+  questionId: text("question_id")
+    .notNull()
+    .references(() => surveyQuestions.id),
+  value: jsonb("value").notNull(),
+});
 
 export const pageConfigs = pgTable(
   "page_configs",

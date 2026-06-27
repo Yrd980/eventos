@@ -39,10 +39,17 @@ import {
   addSessionToMyAgenda,
   checkinParticipant,
   getQRPassForActor,
+  getCurrentRegistrationForm,
   getRegistrationForActor,
+  getVisibleSurvey,
   listMyAgendaForActor,
+  listLiveEntriesForActivity,
+  listSurveyQuestionsForParticipant,
+  listSurveysForActivity,
   registerForActivity,
   removeSessionFromMyAgenda,
+  submitRegistrationForm,
+  submitSurveyResponse,
 } from "./services/participation";
 import { createRedisRealtimePublisher } from "./services/realtime";
 import { createRepository } from "./services/repository";
@@ -58,6 +65,10 @@ const checkinCommandBodySchema = z.object({
   session_id: z.string().min(1),
   qr_token: z.string().min(1),
   device_metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const answersBodySchema = z.object({
+  answers: z.record(z.string(), z.unknown()),
 });
 
 const activityOrganizerBodySchema = z.object({
@@ -213,6 +224,10 @@ async function actorFromRequest(repo: ReturnType<typeof createRepository>, autho
     verifier,
     authorizationHeader,
   });
+}
+
+async function optionalActorFromRequest(repo: ReturnType<typeof createRepository>, authorizationHeader: string | undefined) {
+  return authorizationHeader ? actorFromRequest(repo, authorizationHeader) : undefined;
 }
 
 app.onError((error, c) => {
@@ -911,6 +926,87 @@ app.get("/activities/:activityId/expo-booths", async (c) =>
     const activityId = c.req.param("activityId");
     await getVisibleActivity(repo, activityId);
     return c.json(success(await repo.listExpoBooths(activityId)));
+  }),
+);
+
+app.get("/activities/:activityId/live-entries", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await optionalActorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listLiveEntriesForActivity({ repo, activityId, actor })));
+  }),
+);
+
+app.get("/activities/:activityId/registration-form", async (c) =>
+  withRepo(async (repo) => c.json(success(await getCurrentRegistrationForm({ repo, activityId: c.req.param("activityId") })))),
+);
+
+app.get("/activities/:activityId/registration-forms/current", async (c) =>
+  withRepo(async (repo) => c.json(success(await getCurrentRegistrationForm({ repo, activityId: c.req.param("activityId") })))),
+);
+
+app.post("/activities/:activityId/registration-submissions", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(answersBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "registration_form.submit",
+      resourceType: "registration_form",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => submitRegistrationForm({ repo, activityId, actor, answers: body.answers }),
+    });
+
+    return c.json(success(result));
+  }),
+);
+
+app.get("/activities/:activityId/surveys", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await optionalActorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listSurveysForActivity({ repo, activityId, actor })));
+  }),
+);
+
+app.get("/surveys/:surveyId", async (c) =>
+  withRepo(async (repo) => {
+    const actor = await optionalActorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await getVisibleSurvey({ repo, surveyId: c.req.param("surveyId"), actor })));
+  }),
+);
+
+app.get("/surveys/:surveyId/questions", async (c) =>
+  withRepo(async (repo) => {
+    const actor = await optionalActorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listSurveyQuestionsForParticipant({ repo, surveyId: c.req.param("surveyId"), actor })));
+  }),
+);
+
+app.post("/surveys/:surveyId/responses", async (c) =>
+  withTransaction(async (repo) => {
+    const surveyId = c.req.param("surveyId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(answersBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "survey_response.submit",
+      resourceType: "survey",
+      resourceId: surveyId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { surveyId, body },
+      execute: () => submitSurveyResponse({ repo, surveyId, actor, answers: body.answers }),
+    });
+
+    return c.json(success(result));
   }),
 );
 

@@ -16,13 +16,16 @@ import type {
   QRPass,
   Registration,
   RegistrationForm,
+  RegistrationSubmission,
   Session,
   SessionSpeaker,
   Speaker,
   Sponsor,
   StaffGrant,
   Survey,
+  SurveyAnswer,
   SurveyQuestion,
+  SurveyResponse,
   Tenant,
   User,
 } from "@eventos/contracts";
@@ -46,6 +49,7 @@ import {
   participants,
   qrPasses,
   registrationForms,
+  registrationSubmissions,
   registrations,
   sessions,
   sessionSpeakers,
@@ -53,7 +57,9 @@ import {
   speakers,
   sponsors,
   staffGrants,
+  surveyAnswers,
   surveyQuestions,
+  surveyResponses,
   surveys,
   tenants,
   users,
@@ -253,6 +259,17 @@ function mapRegistration(row: typeof registrations.$inferSelect): Registration {
   };
 }
 
+function mapRegistrationSubmission(row: typeof registrationSubmissions.$inferSelect): RegistrationSubmission {
+  return {
+    id: row.id,
+    registration_id: row.registrationId,
+    form_version_id: row.formVersionId,
+    answers: row.answers as RegistrationSubmission["answers"],
+    projected_fields: optional(row.projectedFields as RegistrationSubmission["projected_fields"] | null),
+    submitted_at: iso(row.submittedAt),
+  };
+}
+
 function mapQRPass(row: typeof qrPasses.$inferSelect): QRPass {
   return {
     id: row.id,
@@ -359,6 +376,26 @@ function mapSurveyQuestion(row: typeof surveyQuestions.$inferSelect): SurveyQues
     required: row.required,
     options: optional(row.options as SurveyQuestion["options"] | null),
     sort_order: row.sortOrder,
+  };
+}
+
+function mapSurveyResponse(row: typeof surveyResponses.$inferSelect): SurveyResponse {
+  return {
+    id: row.id,
+    survey_id: row.surveyId,
+    participant_id: optional(row.participantId),
+    target_type: row.targetType as SurveyResponse["target_type"],
+    target_id: optional(row.targetId),
+    submitted_at: iso(row.submittedAt),
+  };
+}
+
+function mapSurveyAnswer(row: typeof surveyAnswers.$inferSelect): SurveyAnswer {
+  return {
+    id: row.id,
+    response_id: row.responseId,
+    question_id: row.questionId,
+    value: row.value,
   };
 }
 
@@ -1386,6 +1423,29 @@ export function createRepository(db: DbSession) {
       return mapRegistration(rows[0]);
     },
 
+    async createRegistrationSubmission(input: {
+      id: string;
+      activityId: string;
+      registrationId: string;
+      formVersionId: string;
+      answers: Record<string, unknown>;
+      projectedFields?: Record<string, string>;
+    }) {
+      const rows = await db
+        .insert(registrationSubmissions)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          registrationId: input.registrationId,
+          formVersionId: input.formVersionId,
+          answers: input.answers,
+          projectedFields: input.projectedFields,
+        })
+        .returning();
+
+      return mapRegistrationSubmission(rows[0]);
+    },
+
     async getActiveQRPass(activityId: string, participantId: string) {
       return first(
         (
@@ -1462,6 +1522,59 @@ export function createRepository(db: DbSession) {
           .where(and(eq(myAgendaItems.activityId, activityId), eq(myAgendaItems.participantId, participantId)))
           .orderBy(desc(myAgendaItems.createdAt))
       ).map(mapMyAgendaItem);
+    },
+
+    async getSurveyResponseForParticipant(surveyId: string, participantId: string) {
+      return first(
+        (
+          await db
+            .select()
+            .from(surveyResponses)
+            .where(and(eq(surveyResponses.surveyId, surveyId), eq(surveyResponses.participantId, participantId)))
+            .orderBy(desc(surveyResponses.submittedAt))
+            .limit(1)
+        ).map(mapSurveyResponse),
+      );
+    },
+
+    async createSurveyResponse(input: {
+      id: string;
+      activityId: string;
+      surveyId: string;
+      participantId: string;
+      targetType: Survey["target_type"];
+      targetId?: string;
+      answers: Array<{ id: string; questionId: string; value: unknown }>;
+    }) {
+      const responseRows = await db
+        .insert(surveyResponses)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          surveyId: input.surveyId,
+          participantId: input.participantId,
+          targetType: input.targetType,
+          targetId: input.targetId,
+        })
+        .returning();
+      const response = mapSurveyResponse(responseRows[0]);
+      const answerRows =
+        input.answers.length === 0
+          ? []
+          : await db
+              .insert(surveyAnswers)
+              .values(
+                input.answers.map((answer) => ({
+                  id: answer.id,
+                  activityId: input.activityId,
+                  responseId: response.id,
+                  questionId: answer.questionId,
+                  value: answer.value,
+                })),
+              )
+              .returning();
+
+      return { response, answers: answerRows.map(mapSurveyAnswer) };
     },
 
     async hasStaffGrant(activityId: string, userId: string) {
