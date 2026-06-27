@@ -460,6 +460,7 @@ export type AuditEvent = {
 };
 
 export type BusinessResourceType =
+  | "activity_template"
   | "activity"
   | "organizer"
   | "sponsor"

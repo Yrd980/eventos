@@ -1,6 +1,7 @@
 import type {
   Activity,
   ActivityOrganizer,
+  ActivityTemplate,
   Block,
   BusinessResourceType,
   ExpoBooth,
@@ -46,6 +47,22 @@ type PublicationSnapshot = {
 
 const registrationFormFieldTypes = new Set<RegistrationFormField["type"]>(["text", "phone", "email", "select", "multi_select", "boolean"]);
 const registrationOptionFieldTypes = new Set<RegistrationFormField["type"]>(["select", "multi_select"]);
+const templateBusinessFactKeys = new Set([
+  "sessions",
+  "speakers",
+  "organizers",
+  "sponsors",
+  "expo_booths",
+  "live_entries",
+  "surveys",
+  "registration_forms",
+  "notifications",
+  "participants",
+  "registrations",
+  "qr_passes",
+  "my_agenda_items",
+  "checkins",
+]);
 
 function asString(value: unknown, field: string) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -204,6 +221,84 @@ export async function createOperatorTenantResource(input: {
   });
 
   return resource;
+}
+
+function assertActivityTemplateConfig(config: ActivityTemplate["config"]) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    throw new DomainError("VALIDATION_FAILED", "Activity Template config must be an object", { status: 422 });
+  }
+  for (const key of Object.keys(config)) {
+    if (templateBusinessFactKeys.has(key)) {
+      throw new DomainError("VALIDATION_FAILED", "Activity Template config must not contain business facts", { status: 422, details: { key } });
+    }
+  }
+}
+
+export async function listOperatorActivityTemplates(input: { repo: EventOsRepository; actor: RequestActor }) {
+  const tenant = await requireTenantOperator({ repo: input.repo, actor: input.actor });
+  return input.repo.listActivityTemplates(tenant.id);
+}
+
+export async function createOperatorActivityTemplate(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  body: { name: string; template_key: string; description?: string; config: ActivityTemplate["config"] };
+}) {
+  const tenant = await requireTenantOperator({ repo: input.repo, actor: input.actor });
+  assertActivityTemplateConfig(input.body.config);
+  const template = await input.repo.createActivityTemplate({
+    id: createId("tpl"),
+    tenantId: tenant.id,
+    name: input.body.name,
+    templateKey: input.body.template_key,
+    description: input.body.description,
+    config: input.body.config,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "activity_template.created",
+    resourceType: "activity_template",
+    resourceId: template.id,
+    metadata: { template_key: template.template_key },
+  });
+
+  return template;
+}
+
+export async function updateOperatorActivityTemplate(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  templateId: string;
+  body: { name?: string; template_key?: string; description?: string | null; config?: ActivityTemplate["config"] };
+}) {
+  const tenant = await requireTenantOperator({ repo: input.repo, actor: input.actor });
+  const existing = await input.repo.getActivityTemplate(input.templateId);
+  if (!existing || existing.tenant_id !== tenant.id) {
+    throw new DomainError("TENANT_MISMATCH", "Activity Template belongs to a different Tenant or was not found", { status: 404 });
+  }
+  if (input.body.config) {
+    assertActivityTemplateConfig(input.body.config);
+  }
+  const template = await input.repo.updateActivityTemplate({
+    id: input.templateId,
+    name: input.body.name,
+    templateKey: input.body.template_key,
+    description: input.body.description,
+    config: input.body.config,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "activity_template.updated",
+    resourceType: "activity_template",
+    resourceId: input.templateId,
+    metadata: { template_key: template?.template_key },
+  });
+
+  return template;
 }
 
 export async function updateOperatorTenantResource(input: {

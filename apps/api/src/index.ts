@@ -11,6 +11,7 @@ import { runCommand } from "./services/command";
 import { requireActor } from "./services/identity";
 import {
   createOperatorActivity,
+  createOperatorActivityTemplate,
   createOperatorBlock,
   createOperatorExpoBooth,
   createOperatorLiveEntry,
@@ -20,12 +21,14 @@ import {
   grantOperatorStaff,
   createOperatorSession,
   listOperatorActivities,
+  listOperatorActivityTemplates,
   listOperatorNotifications,
   listOperatorTenantResources,
   publishOperatorActivity,
   requireOperatorActivity,
   rollbackOperatorActivity,
   updateOperatorActivity,
+  updateOperatorActivityTemplate,
   updateOperatorExpoBooth,
   updateOperatorLiveEntry,
   updateOperatorNotification,
@@ -78,6 +81,28 @@ const activityOrganizerBodySchema = z.object({
   organizer_id: z.string().min(1),
   sort_order: z.number().int().min(0).default(0),
 });
+
+const activityTemplateConfigSchema = z
+  .record(z.string(), z.unknown())
+  .refine((config) => !["sessions", "speakers", "organizers", "sponsors", "expo_booths", "live_entries", "surveys", "registration_forms", "notifications"].some((key) => key in config), {
+    message: "Activity Template config must not contain business facts",
+  });
+
+const activityTemplateCreateBodySchema = z.object({
+  name: z.string().min(1),
+  template_key: z.string().min(1),
+  description: z.string().min(1).optional(),
+  config: activityTemplateConfigSchema.default({}),
+});
+
+const activityTemplateUpdateBodySchema = activityTemplateCreateBodySchema
+  .extend({
+    description: z.string().min(1).nullable().optional(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "At least one field is required",
+  });
 
 const sessionSpeakerBodySchema = z.object({
   speaker_id: z.string().min(1),
@@ -312,6 +337,52 @@ app.get("/operator/activities", async (c) =>
     const page = rows.slice(0, limit);
     const next = rows.length > limit ? page.at(-1)?.start_time : undefined;
     return c.json(success(page, { limit, has_more: rows.length > limit, next_cursor: next, tenant_id: tenant.id }));
+  }),
+);
+
+app.get("/operator/activity-templates", async (c) =>
+  withRepo(async (repo) => {
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listOperatorActivityTemplates({ repo, actor })));
+  }),
+);
+
+app.post("/operator/activity-templates", async (c) =>
+  withTransaction(async (repo) => {
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(activityTemplateCreateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.activity_template.create",
+      resourceType: "activity_template",
+      resourceId: body.template_key,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: body,
+      execute: () => createOperatorActivityTemplate({ repo, actor, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.patch("/operator/activity-templates/:templateId", async (c) =>
+  withTransaction(async (repo) => {
+    const templateId = c.req.param("templateId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(activityTemplateUpdateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.activity_template.update",
+      resourceType: "activity_template",
+      resourceId: templateId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { templateId, body },
+      execute: () => updateOperatorActivityTemplate({ repo, actor, templateId, body }),
+    });
+    return c.json(success(result));
   }),
 );
 

@@ -1,5 +1,6 @@
 import type {
   Activity,
+  ActivityTemplate,
   ActivityOrganizer,
   ActivityPublication,
   AuditEvent,
@@ -34,6 +35,7 @@ import { and, count, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import type { DbSession } from "../db";
 import {
   activities,
+  activityTemplates,
   activityOrganizers,
   activityPublications,
   auditEvents,
@@ -130,6 +132,18 @@ function mapActivity(row: typeof activities.$inferSelect): Activity {
     theme: optional(row.theme as Activity["theme"] | null),
     created_at: iso(row.createdAt),
     updated_at: iso(row.updatedAt),
+  };
+}
+
+function mapActivityTemplate(row: typeof activityTemplates.$inferSelect): ActivityTemplate {
+  return {
+    id: row.id,
+    tenant_id: row.tenantId,
+    name: row.name,
+    template_key: row.templateKey,
+    description: optional(row.description),
+    config: row.config as ActivityTemplate["config"],
+    created_at: iso(row.createdAt),
   };
 }
 
@@ -469,6 +483,49 @@ export function createRepository(db: DbSession) {
 
     async getActivity(activityId: string) {
       return first((await db.select().from(activities).where(eq(activities.id, activityId)).limit(1)).map(mapActivity));
+    },
+
+    async listActivityTemplates(tenantId: string) {
+      return (
+        await db
+          .select()
+          .from(activityTemplates)
+          .where(eq(activityTemplates.tenantId, tenantId))
+          .orderBy(desc(activityTemplates.createdAt), activityTemplates.id)
+      ).map(mapActivityTemplate);
+    },
+
+    async getActivityTemplate(templateId: string) {
+      return first((await db.select().from(activityTemplates).where(eq(activityTemplates.id, templateId)).limit(1)).map(mapActivityTemplate));
+    },
+
+    async createActivityTemplate(input: { id: string; tenantId: string; name: string; templateKey: string; description?: string; config: ActivityTemplate["config"] }) {
+      const rows = await db
+        .insert(activityTemplates)
+        .values({
+          id: input.id,
+          tenantId: input.tenantId,
+          name: input.name,
+          templateKey: input.templateKey,
+          description: input.description,
+          config: input.config,
+        })
+        .returning();
+      return mapActivityTemplate(rows[0]);
+    },
+
+    async updateActivityTemplate(input: { id: string; name?: string; templateKey?: string; description?: string | null; config?: ActivityTemplate["config"] }) {
+      const rows = await db
+        .update(activityTemplates)
+        .set({
+          name: input.name,
+          templateKey: input.templateKey,
+          description: input.description === undefined ? undefined : input.description,
+          config: input.config,
+        })
+        .where(eq(activityTemplates.id, input.id))
+        .returning();
+      return first(rows.map(mapActivityTemplate));
     },
 
     async getTenantById(tenantId: string) {
