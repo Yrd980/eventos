@@ -7,6 +7,7 @@ export default {
     'pages/me/index',
     'pages/staff-checkin/index',
   ],
+  lazyCodeLoading: 'requiredComponents',
   tabBar: {
     color: '#64748b',
     selectedColor: '#4053e6',

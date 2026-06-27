@@ -9,12 +9,15 @@ function timeRange(session: Session) {
   return `${session.start_time.slice(11, 16)} - ${session.end_time.slice(11, 16)}`
 }
 
+const MAX_VISIBLE_SESSIONS = 20
+
 export default function SchedulePage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [agenda, setAgenda] = useState<MyAgendaItem[]>([])
   const [selected, setSelected] = useState<string>()
   const [status, setStatus] = useState('加载日程中')
   const selectedSession = sessions.find((item) => item.id === selected) ?? sessions[0]
+  const visibleSessions = sessions.slice(0, MAX_VISIBLE_SESSIONS)
   const agendaSet = useMemo(() => new Set(agenda.map((item) => item.session_id)), [agenda])
 
   async function load() {
@@ -87,8 +90,14 @@ export default function SchedulePage() {
       )}
 
       <View className='timeline'>
-        {sessions.map((item) => (
-          <View key={item.id} className={`timeline__item${item.id === selected ? ' timeline__item--active' : ''}`} onClick={() => setSelected(item.id)}>
+        {visibleSessions.map((item) => (
+          <View
+            key={item.id}
+            className={`timeline__item${item.id === selected ? ' timeline__item--active' : ''}`}
+            onClick={() => {
+              if (item.id !== selected) setSelected(item.id)
+            }}
+          >
             <View className='timeline__head'>
               <Text className='timeline__tag'>{item.room_name ?? item.timezone}</Text>
               <Text className={`timeline__status${agendaSet.has(item.id) ? ' timeline__status--added' : ''}`}>{agendaSet.has(item.id) ? '已加入' : item.status}</Text>

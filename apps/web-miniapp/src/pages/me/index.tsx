@@ -6,6 +6,7 @@ import { loadMyAgenda, loadNotifications, loadQRPass, loadRegistration, loadSess
 import './index.css'
 
 const tabs = ['Overview', 'QR Pass', 'My Agenda', 'Registration', 'Messages']
+const MAX_VISIBLE_ITEMS = 15
 
 function timeRange(session: Session) {
   return `${session.start_time.slice(11, 16)} - ${session.end_time.slice(11, 16)}`
@@ -20,6 +21,8 @@ export default function MePage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [status, setStatus] = useState('加载参与信息中')
   const sessionById = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
+  const visibleAgenda = agenda.slice(0, MAX_VISIBLE_ITEMS)
+  const visibleNotifications = notifications.slice(0, MAX_VISIBLE_ITEMS)
 
   async function load() {
     const activityId = await resolveActivityId()
@@ -79,7 +82,13 @@ export default function MePage() {
 
       <View className='tabs'>
         {tabs.map((item, index) => (
-          <Text key={item} className={`tabs__item${index === activeTab ? ' tabs__item--active' : ''}`} onClick={() => setActiveTab(index)}>
+          <Text
+            key={item}
+            className={`tabs__item${index === activeTab ? ' tabs__item--active' : ''}`}
+            onClick={() => {
+              if (index !== activeTab) setActiveTab(index)
+            }}
+          >
             {item}
           </Text>
         ))}
@@ -121,7 +130,7 @@ export default function MePage() {
                 <Text className='qr-card__bodyHint'>去 Agenda 添加</Text>
               </View>
             ) : (
-              agenda.map((item) => {
+              visibleAgenda.map((item) => {
                 const session = sessionById.get(item.session_id)
                 return (
                   <View key={item.id} className='plan-slot'>
@@ -158,7 +167,7 @@ export default function MePage() {
             {notifications.length === 0 ? (
               <Text className='qr-card__bodyText'>No messages</Text>
             ) : (
-              notifications.map((item) => (
+              visibleNotifications.map((item) => (
                 <View key={item.id} className='message-row'>
                   <Text className='message-row__title'>{item.title}</Text>
                   <Text className='message-row__meta'>{item.content}</Text>

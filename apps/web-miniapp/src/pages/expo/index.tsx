@@ -4,11 +4,14 @@ import type { ExpoBooth } from '@eventos/contracts'
 import { loadExpoBooths, resolveActivityId } from '../../utils/api'
 import './index.css'
 
+const MAX_VISIBLE_BOOTHS = 20
+
 export default function ExpoPage() {
   const [items, setItems] = useState<ExpoBooth[]>([])
   const [activeId, setActiveId] = useState<string>()
   const [status, setStatus] = useState('加载展区中')
   const activeItem = items.find((item) => item.id === activeId) ?? items[0]
+  const visibleItems = items.slice(0, MAX_VISIBLE_BOOTHS)
 
   async function load() {
     const activityId = await resolveActivityId()
@@ -37,7 +40,13 @@ export default function ExpoPage() {
         <Text className='expo-map__sub'>{status}</Text>
         <View className='expo-map__body'>
           {items.slice(0, 3).map((item) => (
-            <View key={item.id} className={`expo-map__node${activeId === item.id ? ' expo-map__node--main' : ''}`} onClick={() => setActiveId(item.id)}>
+            <View
+              key={item.id}
+              className={`expo-map__node${activeId === item.id ? ' expo-map__node--main' : ''}`}
+              onClick={() => {
+                if (item.id !== activeId) setActiveId(item.id)
+              }}
+            >
               <Text className='expo-map__nodeTitle'>{item.name}</Text>
             </View>
           ))}
@@ -52,8 +61,14 @@ export default function ExpoPage() {
       </View>
 
       <View className='list'>
-        {items.map((item) => (
-          <View key={item.id} className={`list__row${item.id === activeId ? ' list__row--active' : ''}`} onClick={() => setActiveId(item.id)}>
+        {visibleItems.map((item) => (
+          <View
+            key={item.id}
+            className={`list__row${item.id === activeId ? ' list__row--active' : ''}`}
+            onClick={() => {
+              if (item.id !== activeId) setActiveId(item.id)
+            }}
+          >
             <Text className='list__code'>{item.category ?? item.sort_order}</Text>
             <View className='list__content'>
               <Text className='list__title'>{item.name}</Text>

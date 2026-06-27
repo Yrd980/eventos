@@ -27,6 +27,10 @@ const API_BASE_KEY = 'eventos_api_base_url'
 const AUTHING_TOKEN_KEY = 'eventos_authing_token'
 const ACTIVITY_ID_KEY = 'eventos_activity_id'
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000'
+const READ_CACHE_TTL_MS = 15000
+
+const readCache = new Map<string, { expiresAt: number; value: unknown }>()
+const inflightReads = new Map<string, Promise<unknown>>()
 
 export class ApiRequestError extends Error {
   code: DomainErrorCode
@@ -50,6 +54,7 @@ export function getApiBaseUrl() {
 export function setApiBaseUrl(value: string) {
   try {
     Taro.setStorageSync(API_BASE_KEY, value.trim() || DEFAULT_API_BASE_URL)
+    clearReadCache()
   } catch {
     // Storage can be unavailable during early mini program runtime init.
   }
@@ -66,6 +71,7 @@ export function getAuthingToken() {
 export function setAuthingToken(value: string) {
   try {
     Taro.setStorageSync(AUTHING_TOKEN_KEY, value)
+    clearReadCache()
   } catch {
     // Storage can be unavailable during early mini program runtime init.
   }
@@ -82,6 +88,7 @@ export function getStoredActivityId() {
 export function setStoredActivityId(value: string) {
   try {
     Taro.setStorageSync(ACTIVITY_ID_KEY, value)
+    clearReadCache()
   } catch {
     // Storage can be unavailable during early mini program runtime init.
   }
@@ -131,8 +138,36 @@ export async function apiRequest<T>(path: string, options: { method?: string; bo
   return payload.data
 }
 
+function clearReadCache() {
+  readCache.clear()
+  inflightReads.clear()
+}
+
+async function cachedRead<T>(path: string, options: { auth?: boolean } = {}) {
+  const tokenKey = options.auth === false ? 'public' : getAuthingToken()
+  const cacheKey = `${getApiBaseUrl()}|${tokenKey}|${path}`
+  const now = Date.now()
+  const cached = readCache.get(cacheKey)
+  if (cached && cached.expiresAt > now) return cached.value as T
+
+  const inflight = inflightReads.get(cacheKey)
+  if (inflight) return inflight as Promise<T>
+
+  const request = apiRequest<T>(path, options)
+    .then((value) => {
+      readCache.set(cacheKey, { expiresAt: Date.now() + READ_CACHE_TTL_MS, value })
+      return value
+    })
+    .finally(() => {
+      inflightReads.delete(cacheKey)
+    })
+
+  inflightReads.set(cacheKey, request)
+  return request
+}
+
 export async function loadActivities() {
-  return apiRequest<Activity[]>('/activities', { auth: false })
+  return cachedRead<Activity[]>('/activities', { auth: false })
 }
 
 export async function resolveActivityId() {
@@ -146,23 +181,23 @@ export async function resolveActivityId() {
 }
 
 export async function loadActivity(activityId: string) {
-  return apiRequest<Activity>(`/activities/${activityId}`, { auth: false })
+  return cachedRead<Activity>(`/activities/${activityId}`, { auth: false })
 }
 
 export async function loadPublication(activityId: string) {
-  return apiRequest<ActivityPublication>(`/activities/${activityId}/publication`, { auth: false })
+  return cachedRead<ActivityPublication>(`/activities/${activityId}/publication`, { auth: false })
 }
 
 export async function loadSessions(activityId: string) {
-  return apiRequest<Session[]>(`/activities/${activityId}/sessions`, { auth: false })
+  return cachedRead<Session[]>(`/activities/${activityId}/sessions`, { auth: false })
 }
 
 export async function loadLiveEntries(activityId: string) {
-  return apiRequest<LiveEntry[]>(`/activities/${activityId}/live-entries`)
+  return cachedRead<LiveEntry[]>(`/activities/${activityId}/live-entries`)
 }
 
 export async function loadNotifications(activityId: string) {
-  return apiRequest<Notification[]>(`/activities/${activityId}/notifications`)
+  return cachedRead<Notification[]>(`/activities/${activityId}/notifications`)
 }
 
 export async function register(activityId: string) {
@@ -173,7 +208,7 @@ export async function register(activityId: string) {
 }
 
 export async function loadRegistrationForm(activityId: string) {
-  return apiRequest<RegistrationForm>(`/activities/${activityId}/registration-form`, { auth: false })
+  return cachedRead<RegistrationForm>(`/activities/${activityId}/registration-form`, { auth: false })
 }
 
 export async function submitRegistrationForm(activityId: string, answers: Record<string, unknown>) {
@@ -185,11 +220,11 @@ export async function submitRegistrationForm(activityId: string, answers: Record
 }
 
 export async function loadRegistration(activityId: string) {
-  return apiRequest<Registration>(`/activities/${activityId}/registration`)
+  return cachedRead<Registration>(`/activities/${activityId}/registration`)
 }
 
 export async function loadQRPass(activityId: string) {
-  return apiRequest<QRPassView>(`/activities/${activityId}/qr-pass`)
+  return cachedRead<QRPassView>(`/activities/${activityId}/qr-pass`)
 }
 
 export async function addMyAgenda(sessionId: string) {
@@ -201,19 +236,19 @@ export async function removeMyAgenda(sessionId: string) {
 }
 
 export async function loadMyAgenda(activityId: string) {
-  return apiRequest<MyAgendaItem[]>(`/activities/${activityId}/my-agenda`)
+  return cachedRead<MyAgendaItem[]>(`/activities/${activityId}/my-agenda`)
 }
 
 export async function loadExpoBooths(activityId: string) {
-  return apiRequest<ExpoBooth[]>(`/activities/${activityId}/expo-booths`, { auth: false })
+  return cachedRead<ExpoBooth[]>(`/activities/${activityId}/expo-booths`, { auth: false })
 }
 
 export async function loadSurveys(activityId: string) {
-  return apiRequest<Survey[]>(`/activities/${activityId}/surveys`)
+  return cachedRead<Survey[]>(`/activities/${activityId}/surveys`)
 }
 
 export async function loadSurveyQuestions(surveyId: string) {
-  return apiRequest<{ survey: Survey; questions: SurveyQuestion[] }>(`/surveys/${surveyId}/questions`)
+  return cachedRead<{ survey: Survey; questions: SurveyQuestion[] }>(`/surveys/${surveyId}/questions`)
 }
 
 export async function submitSurveyResponse(surveyId: string, answers: Record<string, unknown>) {
@@ -237,5 +272,5 @@ export async function checkinSession(input: { sessionId: string; qrToken: string
 }
 
 export async function loadCheckinCount(sessionId: string) {
-  return apiRequest<{ session_id: string; count: number }>(`/sessions/${sessionId}/checkin-count`, { auth: false })
+  return cachedRead<{ session_id: string; count: number }>(`/sessions/${sessionId}/checkin-count`, { auth: false })
 }

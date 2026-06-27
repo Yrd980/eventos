@@ -13,6 +13,7 @@ const actions = [
 ]
 
 const bottomTools = ['线上观看', '问卷', '参会二维码', '峰会首页']
+const MAX_VISIBLE_ROWS = 10
 
 const replies = [
   {
@@ -47,6 +48,9 @@ export default function AssistantPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [status, setStatus] = useState('加载参与资源中')
   const activeReply = replies[activeAction]
+  const visibleLiveEntries = liveEntries.slice(0, MAX_VISIBLE_ROWS)
+  const visibleSurveys = surveys.slice(0, MAX_VISIBLE_ROWS)
+  const visibleQuestions = questions.slice(0, MAX_VISIBLE_ROWS)
 
   async function loadResources() {
     const activityId = await resolveActivityId()
@@ -137,7 +141,7 @@ export default function AssistantPage() {
               key={item}
               className={`assistant-chip${index === activeAction ? ' assistant-chip--active' : ''}`}
               onClick={() => {
-                setActiveAction(index)
+                if (index !== activeAction) setActiveAction(index)
               }}
             >
               <Text className='assistant-chip__text'>{item}</Text>
@@ -169,7 +173,7 @@ export default function AssistantPage() {
           {liveEntries.length === 0 ? (
             <Text className='data-section__empty'>暂无可见 Live Entry</Text>
           ) : (
-            liveEntries.map((entry) => (
+            visibleLiveEntries.map((entry) => (
               <View key={entry.id} className='data-row'>
                 <Text className='data-row__title'>{entry.title}</Text>
                 <Text className='data-row__meta'>{entry.status} · {entry.access_policy} · {entry.start_time ?? 'No start time'}</Text>
@@ -182,13 +186,13 @@ export default function AssistantPage() {
         <View className='data-section'>
           <Text className='data-section__title'>Surveys</Text>
           <View className='survey-tabs'>
-            {surveys.map((survey) => (
+            {visibleSurveys.map((survey) => (
               <Text key={survey.id} className={`survey-tab${survey.id === selectedSurvey?.id ? ' survey-tab--active' : ''}`} onClick={() => selectSurvey(survey)}>
                 {survey.title}
               </Text>
             ))}
           </View>
-          {questions.map((question) => (
+          {visibleQuestions.map((question) => (
             <View key={question.id} className='question-field'>
               <Text className='question-field__label'>{question.label}{question.required ? ' *' : ''}</Text>
               {question.type === 'boolean' ? (
@@ -244,9 +248,9 @@ export default function AssistantPage() {
             key={item}
             className={`assistant-tools__item${index === activeTool ? ' assistant-tools__item--active' : ''}`}
             onClick={() => {
-              setActiveTool(index)
+              if (index !== activeTool) setActiveTool(index)
               if (index === 1) {
-                setActiveAction(1)
+                if (activeAction !== 1) setActiveAction(1)
                 return
               }
               if (index === 2) {
@@ -257,7 +261,7 @@ export default function AssistantPage() {
                 Taro.switchTab({ url: '/pages/index/index' })
                 return
               }
-              setActiveAction(0)
+              if (activeAction !== 0) setActiveAction(0)
             }}
           >
             <Text>{item}</Text>
