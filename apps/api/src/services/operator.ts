@@ -1,4 +1,20 @@
-import type { Activity, Block, BusinessResourceType, ExpoBooth, LiveEntry, PageConfig, RegistrationForm, Session, Survey, SurveyQuestion } from "@eventos/contracts";
+import type {
+  Activity,
+  ActivityOrganizer,
+  Block,
+  BusinessResourceType,
+  ExpoBooth,
+  LiveEntry,
+  Organizer,
+  PageConfig,
+  RegistrationForm,
+  Session,
+  SessionSpeaker,
+  Speaker,
+  Sponsor,
+  Survey,
+  SurveyQuestion,
+} from "@eventos/contracts";
 import type { RequestActor } from "../auth/authing";
 import { DomainError } from "../http/envelope";
 import { createId, stableHash } from "./ids";
@@ -7,6 +23,28 @@ import type { EventOsRepository } from "./repository";
 import { writeAuditEvent } from "./audit";
 
 type JsonRecord = Record<string, unknown>;
+
+type RegistrationFormField = RegistrationForm["fields"][number];
+
+type PublicationSnapshot = {
+  activity: Activity;
+  activity_organizers: ActivityOrganizer[];
+  organizers: Organizer[];
+  sessions: Session[];
+  session_speakers: SessionSpeaker[];
+  speakers: Speaker[];
+  page_configs: PageConfig[];
+  expo_booths: ExpoBooth[];
+  sponsors: Sponsor[];
+  live_entries: LiveEntry[];
+  surveys: Survey[];
+  survey_questions: SurveyQuestion[];
+  registration_forms: RegistrationForm[];
+  generated_at: string;
+};
+
+const registrationFormFieldTypes = new Set<RegistrationFormField["type"]>(["text", "phone", "email", "select", "multi_select", "boolean"]);
+const registrationOptionFieldTypes = new Set<RegistrationFormField["type"]>(["select", "multi_select"]);
 
 function asString(value: unknown, field: string) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -982,26 +1020,187 @@ export async function upsertOperatorSurveyQuestion(input: {
   return question;
 }
 
-async function buildPublicationSnapshot(repo: EventOsRepository, activity: Activity) {
+function requirePublishValidation(condition: boolean, message: string, details?: Record<string, unknown>) {
+  if (!condition) {
+    throw new DomainError("VALIDATION_FAILED", message, { status: 422, details });
+  }
+}
+
+function hasNonEmptyText(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+function assertRegistrationFormFields(form: RegistrationForm) {
+  const keys = new Set<string>();
+  for (const field of form.fields) {
+    requirePublishValidation(hasNonEmptyText(field.id), "Registration Form field id is required", { form_id: form.id });
+    requirePublishValidation(hasNonEmptyText(field.key), "Registration Form field key is required", { form_id: form.id, field_id: field.id });
+    requirePublishValidation(!keys.has(field.key), "Registration Form field key must be unique", { form_id: form.id, field_key: field.key });
+    keys.add(field.key);
+
+    requirePublishValidation(hasNonEmptyText(field.label), "Registration Form field label is required", { form_id: form.id, field_key: field.key });
+    requirePublishValidation(registrationFormFieldTypes.has(field.type), "Registration Form field type is invalid", { form_id: form.id, field_key: field.key });
+
+    const options = field.options ?? [];
+    if (registrationOptionFieldTypes.has(field.type)) {
+      requirePublishValidation(options.length > 0, "Registration Form select fields require options", { form_id: form.id, field_key: field.key });
+    } else {
+      requirePublishValidation(options.length === 0, "Registration Form non-select fields must not include options", { form_id: form.id, field_key: field.key });
+    }
+
+    const optionValues = new Set<string>();
+    for (const option of options) {
+      requirePublishValidation(hasNonEmptyText(option.label), "Registration Form option label is required", { form_id: form.id, field_key: field.key });
+      requirePublishValidation(hasNonEmptyText(option.value), "Registration Form option value is required", { form_id: form.id, field_key: field.key });
+      requirePublishValidation(!optionValues.has(option.value), "Registration Form option value must be unique", {
+        form_id: form.id,
+        field_key: field.key,
+        option_value: option.value,
+      });
+      optionValues.add(option.value);
+    }
+  }
+}
+
+function assertBlockResourceRefs(input: {
+  block: Block;
+  activity: Activity;
+  activityOrganizerIds: Set<string>;
+  sessionIds: Set<string>;
+  speakerIds: Set<string>;
+  registrationFormIds: Set<string>;
+  expoBoothIds: Set<string>;
+  sponsorIds: Set<string>;
+  liveEntryIds: Set<string>;
+  surveyIds: Set<string>;
+}) {
+  for (const ref of input.block.resource_refs ?? []) {
+    const details = { block_id: input.block.id, resource_type: ref.resource_type, resource_id: ref.resource_id };
+    if (ref.resource_type === "activity") {
+      requirePublishValidation(ref.resource_id === input.activity.id, "Block Activity reference must point to the published Activity", details);
+      continue;
+    }
+    if (ref.resource_type === "organizer") {
+      requirePublishValidation(input.activityOrganizerIds.has(ref.resource_id), "Block Organizer reference must be linked to the Activity", details);
+      continue;
+    }
+    if (ref.resource_type === "session") {
+      requirePublishValidation(input.sessionIds.has(ref.resource_id), "Block Session reference must belong to the Activity and be publishable", details);
+      continue;
+    }
+    if (ref.resource_type === "speaker") {
+      requirePublishValidation(input.speakerIds.has(ref.resource_id), "Block Speaker reference must be linked to an Activity Session", details);
+      continue;
+    }
+    if (ref.resource_type === "registration_form") {
+      requirePublishValidation(input.registrationFormIds.has(ref.resource_id), "Block Registration Form reference must belong to the Activity", details);
+      continue;
+    }
+    if (ref.resource_type === "expo_booth") {
+      requirePublishValidation(input.expoBoothIds.has(ref.resource_id), "Block Expo Booth reference must belong to the Activity and be visible", details);
+      continue;
+    }
+    if (ref.resource_type === "sponsor") {
+      requirePublishValidation(input.sponsorIds.has(ref.resource_id), "Block Sponsor reference must be used by an Activity Expo Booth", details);
+      continue;
+    }
+    if (ref.resource_type === "live_entry") {
+      requirePublishValidation(input.liveEntryIds.has(ref.resource_id), "Block Live Entry reference must belong to the Activity and be participant-visible", details);
+      continue;
+    }
+    if (ref.resource_type === "survey") {
+      requirePublishValidation(input.surveyIds.has(ref.resource_id), "Block Survey reference must belong to the Activity and be published", details);
+      continue;
+    }
+
+    throw new DomainError("VALIDATION_FAILED", "Block resource reference type cannot be published from Page Config", { status: 422, details });
+  }
+}
+
+function assertLiveEntries(input: { liveEntries: LiveEntry[]; sessionIds: Set<string> }) {
+  for (const entry of input.liveEntries) {
+    if (entry.session_id) {
+      requirePublishValidation(input.sessionIds.has(entry.session_id), "Live Entry session_id must belong to the Activity", {
+        live_entry_id: entry.id,
+        session_id: entry.session_id,
+      });
+    }
+  }
+}
+
+function assertSurveys(input: { surveys: Survey[]; sessionIds: Set<string>; expoBoothIds: Set<string>; liveEntryIds: Set<string> }) {
+  for (const survey of input.surveys) {
+    if (survey.target_type === "activity") {
+      requirePublishValidation(!survey.target_id, "Activity-targeted Survey must not include target_id", { survey_id: survey.id });
+      continue;
+    }
+
+    const targetId = survey.target_id;
+    if (!hasNonEmptyText(targetId)) {
+      throw new DomainError("VALIDATION_FAILED", "Survey target_id is required", {
+        status: 422,
+        details: { survey_id: survey.id, target_type: survey.target_type },
+      });
+    }
+    if (survey.target_type === "session") {
+      requirePublishValidation(input.sessionIds.has(targetId), "Survey Session target must belong to the Activity", {
+        survey_id: survey.id,
+        target_id: targetId,
+      });
+      continue;
+    }
+    if (survey.target_type === "expo_booth") {
+      requirePublishValidation(input.expoBoothIds.has(targetId), "Survey Expo Booth target must belong to the Activity", {
+        survey_id: survey.id,
+        target_id: targetId,
+      });
+      continue;
+    }
+    requirePublishValidation(input.liveEntryIds.has(targetId), "Survey Live Entry target must belong to the Activity", {
+      survey_id: survey.id,
+      target_id: targetId,
+    });
+  }
+}
+
+async function buildPublicationSnapshot(repo: EventOsRepository, activity: Activity): Promise<PublicationSnapshot> {
+  const activityOrganizers = await repo.listActivityOrganizers(activity.id);
+  const organizers = await repo.listActivityLinkedOrganizers(activity.id);
   const sessions = await repo.listSessions(activity.id);
-  const expoBooths = await repo.listExpoBooths(activity.id);
+  const sessionSpeakers = await repo.listActivitySessionSpeakers(activity.id);
+  const speakers = await repo.listActivitySessionLinkedSpeakers(activity.id);
   const pageConfigs = await repo.listPageConfigs(activity.id);
+  const expoBooths = await repo.listExpoBooths(activity.id);
+  const sponsors = await repo.listActivityReferencedSponsors(activity.id);
+  const liveEntries = await repo.listPublishedLiveEntries(activity.id);
+  const surveys = (await repo.listSurveys(activity.id)).filter((survey) => survey.status === "published");
+  const surveyQuestions = (await Promise.all(surveys.map((survey) => repo.listSurveyQuestions(survey.id)))).flat();
+  const registrationForms = await repo.listRegistrationForms(activity.id);
   return {
     activity,
+    activity_organizers: activityOrganizers,
+    organizers,
     sessions,
-    expo_booths: expoBooths,
+    session_speakers: sessionSpeakers,
+    speakers,
     page_configs: pageConfigs,
+    expo_booths: expoBooths,
+    sponsors,
+    live_entries: liveEntries,
+    surveys,
+    survey_questions: surveyQuestions,
+    registration_forms: registrationForms,
     generated_at: new Date().toISOString(),
   };
 }
 
-async function assertPublishable(repo: EventOsRepository, activity: Activity) {
+function assertPublishable(activity: Activity, snapshot: PublicationSnapshot) {
   if (!activity.name || !activity.start_time || !activity.end_time || !activity.venue?.timezone) {
     throw new DomainError("VALIDATION_FAILED", "Activity basic information is incomplete", { status: 422 });
   }
 
-  const home = await repo.getPageConfig(activity.id, "home");
-  const agenda = await repo.getPageConfig(activity.id, "agenda");
+  const home = snapshot.page_configs.find((page) => page.page_key === "home");
+  const agenda = snapshot.page_configs.find((page) => page.page_key === "agenda");
   if (!home?.enabled) {
     throw new DomainError("VALIDATION_FAILED", "Home page must be enabled before publishing", { status: 422 });
   }
@@ -1009,15 +1208,43 @@ async function assertPublishable(repo: EventOsRepository, activity: Activity) {
     throw new DomainError("VALIDATION_FAILED", "Agenda page must be enabled before publishing", { status: 422 });
   }
 
-  if ((await repo.countScheduledSessions(activity.id)) < 1) {
+  if (snapshot.sessions.filter((session) => session.status === "scheduled").length < 1) {
     throw new DomainError("VALIDATION_FAILED", "At least one scheduled Session is required before publishing", { status: 422 });
   }
 
-  for (const page of await repo.listPageConfigs(activity.id)) {
+  const activityOrganizerIds = new Set(snapshot.activity_organizers.map((link) => link.organizer_id));
+  const sessionIds = new Set(snapshot.sessions.map((session) => session.id));
+  const speakerIds = new Set(snapshot.speakers.map((speaker) => speaker.id));
+  const registrationFormIds = new Set(snapshot.registration_forms.map((form) => form.id));
+  const expoBoothIds = new Set(snapshot.expo_booths.map((booth) => booth.id));
+  const sponsorIds = new Set(snapshot.sponsors.map((sponsor) => sponsor.id));
+  const liveEntryIds = new Set(snapshot.live_entries.map((entry) => entry.id));
+  const surveyIds = new Set(snapshot.surveys.map((survey) => survey.id));
+
+  assertLiveEntries({ liveEntries: snapshot.live_entries, sessionIds });
+  assertSurveys({ surveys: snapshot.surveys, sessionIds, expoBoothIds, liveEntryIds });
+
+  for (const form of snapshot.registration_forms) {
+    assertRegistrationFormFields(form);
+  }
+
+  for (const page of snapshot.page_configs) {
     for (const block of page.blocks) {
       if (!block.block_key || !block.config || typeof block.config !== "object") {
         throw new DomainError("VALIDATION_FAILED", "Block configuration is invalid", { status: 422 });
       }
+      assertBlockResourceRefs({
+        block,
+        activity,
+        activityOrganizerIds,
+        sessionIds,
+        speakerIds,
+        registrationFormIds,
+        expoBoothIds,
+        sponsorIds,
+        liveEntryIds,
+        surveyIds,
+      });
     }
   }
 }
@@ -1032,8 +1259,8 @@ export async function publishOperatorActivity(input: { repo: EventOsRepository; 
     throw new DomainError("TENANT_MISMATCH", "Activity belongs to a different Tenant", { status: 403 });
   }
 
-  await assertPublishable(input.repo, activity);
   const snapshot = await buildPublicationSnapshot(input.repo, activity);
+  assertPublishable(activity, snapshot);
   const version = await input.repo.getNextPublicationVersion(activity.id);
   await input.repo.supersedeCurrentPublication(activity.id);
   const publication = await input.repo.createPublication({

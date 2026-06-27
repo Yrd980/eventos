@@ -564,6 +564,17 @@ export function createRepository(db: DbSession) {
       ).map(mapActivityOrganizer);
     },
 
+    async listActivityLinkedOrganizers(activityId: string) {
+      return (
+        await db
+          .select({ organizer: organizers })
+          .from(activityOrganizers)
+          .innerJoin(organizers, eq(organizers.id, activityOrganizers.organizerId))
+          .where(eq(activityOrganizers.activityId, activityId))
+          .orderBy(activityOrganizers.sortOrder, organizers.name, organizers.id)
+      ).map((row) => mapOrganizer(row.organizer));
+    },
+
     async upsertActivityOrganizer(input: { activityId: string; organizerId: string; sortOrder: number }) {
       const rows = await db
         .insert(activityOrganizers)
@@ -631,6 +642,17 @@ export function createRepository(db: DbSession) {
           .where(eq(expoBooths.activityId, activityId))
           .orderBy(expoBooths.sortOrder, expoBooths.name, expoBooths.id)
       ).map(mapExpoBooth);
+    },
+
+    async listActivityReferencedSponsors(activityId: string) {
+      return (
+        await db
+          .selectDistinct({ sponsor: sponsors })
+          .from(expoBooths)
+          .innerJoin(sponsors, eq(sponsors.id, expoBooths.sponsorId))
+          .where(and(eq(expoBooths.activityId, activityId), eq(expoBooths.status, "visible")))
+          .orderBy(sponsors.name, sponsors.id)
+      ).map((row) => mapSponsor(row.sponsor));
     },
 
     async getExpoBooth(expoBoothId: string) {
@@ -701,6 +723,16 @@ export function createRepository(db: DbSession) {
           .select()
           .from(liveEntries)
           .where(eq(liveEntries.activityId, activityId))
+          .orderBy(liveEntries.sortOrder, liveEntries.startTime, liveEntries.id)
+      ).map(mapLiveEntry);
+    },
+
+    async listPublishedLiveEntries(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(liveEntries)
+          .where(and(eq(liveEntries.activityId, activityId), inArray(liveEntries.status, ["scheduled", "live", "ended"])))
           .orderBy(liveEntries.sortOrder, liveEntries.startTime, liveEntries.id)
       ).map(mapLiveEntry);
     },
@@ -1076,6 +1108,29 @@ export function createRepository(db: DbSession) {
       return (
         await db.select().from(sessionSpeakers).where(eq(sessionSpeakers.sessionId, sessionId)).orderBy(sessionSpeakers.sortOrder, sessionSpeakers.speakerId)
       ).map(mapSessionSpeaker);
+    },
+
+    async listActivitySessionSpeakers(activityId: string) {
+      return (
+        await db
+          .select({ sessionSpeaker: sessionSpeakers })
+          .from(sessionSpeakers)
+          .innerJoin(sessions, eq(sessions.id, sessionSpeakers.sessionId))
+          .where(and(eq(sessions.activityId, activityId), inArray(sessions.status, ["scheduled", "cancelled"])))
+          .orderBy(sessions.startTime, sessions.sortOrder, sessionSpeakers.sortOrder, sessionSpeakers.speakerId)
+      ).map((row) => mapSessionSpeaker(row.sessionSpeaker));
+    },
+
+    async listActivitySessionLinkedSpeakers(activityId: string) {
+      return (
+        await db
+          .selectDistinct({ speaker: speakers })
+          .from(sessionSpeakers)
+          .innerJoin(sessions, eq(sessions.id, sessionSpeakers.sessionId))
+          .innerJoin(speakers, eq(speakers.id, sessionSpeakers.speakerId))
+          .where(and(eq(sessions.activityId, activityId), inArray(sessions.status, ["scheduled", "cancelled"])))
+          .orderBy(speakers.name, speakers.id)
+      ).map((row) => mapSpeaker(row.speaker));
     },
 
     async upsertSessionSpeaker(input: {
