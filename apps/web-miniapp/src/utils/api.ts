@@ -1,5 +1,25 @@
 import Taro from '@tarojs/taro'
-import type { Activity, ApiError, ApiSuccess, DomainErrorCode, ExpoBooth, MyAgendaItem, QRPass, Registration, Session, StaffCheckinResult } from '@eventos/contracts'
+import type {
+  Activity,
+  ActivityPublication,
+  ApiError,
+  ApiSuccess,
+  DomainErrorCode,
+  ExpoBooth,
+  LiveEntry,
+  MyAgendaItem,
+  Notification,
+  QRPass,
+  Registration,
+  RegistrationForm,
+  RegistrationSubmission,
+  Session,
+  StaffCheckinResult,
+  Survey,
+  SurveyAnswer,
+  SurveyQuestion,
+  SurveyResponse,
+} from '@eventos/contracts'
 
 export type QRPassView = QRPass & { token: string }
 
@@ -77,14 +97,38 @@ export async function loadActivity(activityId: string) {
   return apiRequest<Activity>(`/activities/${activityId}`, { auth: false })
 }
 
+export async function loadPublication(activityId: string) {
+  return apiRequest<ActivityPublication>(`/activities/${activityId}/publication`, { auth: false })
+}
+
 export async function loadSessions(activityId: string) {
   return apiRequest<Session[]>(`/activities/${activityId}/sessions`, { auth: false })
+}
+
+export async function loadLiveEntries(activityId: string) {
+  return apiRequest<LiveEntry[]>(`/activities/${activityId}/live-entries`)
+}
+
+export async function loadNotifications(activityId: string) {
+  return apiRequest<Notification[]>(`/activities/${activityId}/notifications`)
 }
 
 export async function register(activityId: string) {
   return apiRequest<{ registration: Registration; qr_pass: QRPassView }>(`/activities/${activityId}/registration`, {
     method: 'POST',
     idempotency: true,
+  })
+}
+
+export async function loadRegistrationForm(activityId: string) {
+  return apiRequest<RegistrationForm>(`/activities/${activityId}/registration-form`, { auth: false })
+}
+
+export async function submitRegistrationForm(activityId: string, answers: Record<string, unknown>) {
+  return apiRequest<{ form: RegistrationForm; submission: RegistrationSubmission }>(`/activities/${activityId}/registration-submissions`, {
+    method: 'POST',
+    idempotency: true,
+    body: { answers },
   })
 }
 
@@ -110,6 +154,22 @@ export async function loadMyAgenda(activityId: string) {
 
 export async function loadExpoBooths(activityId: string) {
   return apiRequest<ExpoBooth[]>(`/activities/${activityId}/expo-booths`, { auth: false })
+}
+
+export async function loadSurveys(activityId: string) {
+  return apiRequest<Survey[]>(`/activities/${activityId}/surveys`)
+}
+
+export async function loadSurveyQuestions(surveyId: string) {
+  return apiRequest<{ survey: Survey; questions: SurveyQuestion[] }>(`/surveys/${surveyId}/questions`)
+}
+
+export async function submitSurveyResponse(surveyId: string, answers: Record<string, unknown>) {
+  return apiRequest<{ response: SurveyResponse; answers: SurveyAnswer[] }>(`/surveys/${surveyId}/responses`, {
+    method: 'POST',
+    idempotency: true,
+    body: { answers },
+  })
 }
 
 export async function checkinSession(input: { sessionId: string; qrToken: string; deviceMetadata?: Record<string, unknown> }) {

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import type { MyAgendaItem, QRPass, Registration, Session } from '@eventos/contracts'
-import { getStoredActivityId, loadMyAgenda, loadQRPass, loadRegistration, loadSessions, removeMyAgenda, type QRPassView } from '../../utils/api'
+import type { MyAgendaItem, Notification, QRPass, Registration, Session } from '@eventos/contracts'
+import { getStoredActivityId, loadMyAgenda, loadNotifications, loadQRPass, loadRegistration, loadSessions, removeMyAgenda, type QRPassView } from '../../utils/api'
 import './index.css'
 
-const tabs = ['Overview', 'QR Pass', 'My Agenda', 'Registration']
+const tabs = ['Overview', 'QR Pass', 'My Agenda', 'Registration', 'Messages']
 
 function timeRange(session: Session) {
   return `${session.start_time.slice(11, 16)} - ${session.end_time.slice(11, 16)}`
@@ -16,6 +16,7 @@ export default function MePage() {
   const [registration, setRegistration] = useState<Registration>()
   const [qrPass, setQRPass] = useState<QRPassView>()
   const [agenda, setAgenda] = useState<MyAgendaItem[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [status, setStatus] = useState('加载参与信息中')
   const activityId = getStoredActivityId()
@@ -27,9 +28,10 @@ export default function MePage() {
       return
     }
     try {
-      const [sessionRows, agendaRows] = await Promise.all([loadSessions(activityId), loadMyAgenda(activityId)])
+      const [sessionRows, agendaRows, messageRows] = await Promise.all([loadSessions(activityId), loadMyAgenda(activityId), loadNotifications(activityId).catch(() => [])])
       setSessions(sessionRows)
       setAgenda(agendaRows)
+      setNotifications(messageRows)
       setRegistration(await loadRegistration(activityId))
       setQRPass(await loadQRPass(activityId))
       setStatus('参与信息已加载')
@@ -144,6 +146,22 @@ export default function MePage() {
             <Text className='qr-card__bodyText'>{registration?.status ?? 'No Registration'}</Text>
             <View className='qr-card__bodyLine' />
             <Text className='qr-card__bodyHint'>{registration?.id ?? 'Register from Home first'}</Text>
+          </View>
+        )}
+
+        {activeTab === 4 && (
+          <View className='qr-card__body'>
+            {notifications.length === 0 ? (
+              <Text className='qr-card__bodyText'>No messages</Text>
+            ) : (
+              notifications.map((item) => (
+                <View key={item.id} className='message-row'>
+                  <Text className='message-row__title'>{item.title}</Text>
+                  <Text className='message-row__meta'>{item.content}</Text>
+                  <Text className='message-row__time'>{item.scheduled_at ?? item.created_at}</Text>
+                </View>
+              ))
+            )}
           </View>
         )}
       </View>

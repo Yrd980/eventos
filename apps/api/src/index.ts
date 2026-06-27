@@ -58,6 +58,7 @@ import {
   getVisibleSurvey,
   listMyAgendaForActor,
   listLiveEntriesForActivity,
+  listNotificationsForParticipant,
   listSurveyQuestionsForParticipant,
   listSurveysForActivity,
   registerForActivity,
@@ -1243,6 +1244,14 @@ app.get("/activities/:activityId/surveys", async (c) =>
     const activityId = c.req.param("activityId");
     const actor = await optionalActorFromRequest(repo, c.req.header("authorization"));
     return c.json(success(await listSurveysForActivity({ repo, activityId, actor })));
+  }),
+);
+
+app.get("/activities/:activityId/notifications", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await optionalActorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listNotificationsForParticipant({ repo, activityId, actor })));
   }),
 );
 

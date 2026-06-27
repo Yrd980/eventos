@@ -338,3 +338,28 @@
   font-size: 28rpx;
   font-weight: 700;
 }
+
+.message-row {
+  display: grid;
+  gap: 6rpx;
+  padding: 14rpx;
+  border-radius: 14rpx;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.message-row__title {
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.message-row__meta {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 22rpx;
+  line-height: 1.45;
+}
+
+.message-row__time {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 20rpx;
+}

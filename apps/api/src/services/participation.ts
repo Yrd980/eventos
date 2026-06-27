@@ -1,4 +1,4 @@
-import type { LiveEntry, MyAgendaItem, RegistrationForm, StaffCheckinResult, Survey, SurveyQuestion } from "@eventos/contracts";
+import type { LiveEntry, MyAgendaItem, Notification, RegistrationForm, StaffCheckinResult, Survey, SurveyQuestion } from "@eventos/contracts";
 import type { RequestActor } from "../auth/authing";
 import { DomainError } from "../http/envelope";
 import { getMutableParticipantActivity, getPublishedSnapshot, getVisibleActivity } from "./activity";
@@ -397,6 +397,30 @@ export async function listSurveysForActivity(input: { repo: EventOsRepository; a
   const confirmed = await hasConfirmedRegistration(input);
   const snapshot = await getPublishedSnapshotRows(input.repo, input.activityId);
   return filterByAccessPolicy(snapshot.surveys.filter((survey) => survey.status === "published"), confirmed);
+}
+
+export async function listNotificationsForParticipant(input: { repo: EventOsRepository; activityId: string; actor?: RequestActor }) {
+  await getVisibleActivity(input.repo, input.activityId);
+  const confirmed = await hasConfirmedRegistration(input);
+  const myAgendaSessionIds =
+    input.actor && confirmed
+      ? new Set((await input.repo.listMyAgenda(input.activityId, (await input.repo.findParticipant(input.activityId, input.actor.user.id))?.id ?? "")).map((item) => item.session_id))
+      : new Set<string>();
+
+  const now = Date.now();
+  return (await input.repo.listNotifications(input.activityId)).filter((notification) => {
+    if (notification.channel !== "miniapp") return false;
+    if (notification.status === "scheduled" && (!notification.scheduled_at || new Date(notification.scheduled_at).getTime() > now)) return false;
+    if (!["scheduled", "sending", "sent"].includes(notification.status)) return false;
+    return isNotificationVisible(notification, { confirmed, myAgendaSessionIds });
+  });
+}
+
+function isNotificationVisible(notification: Notification, input: { confirmed: boolean; myAgendaSessionIds: Set<string> }) {
+  const rule = notification.audience_rule;
+  if (rule.type === "all_confirmed_participants") return input.confirmed;
+  if (rule.type === "participants_with_session_in_my_agenda") return input.confirmed && input.myAgendaSessionIds.has(rule.session_id);
+  return false;
 }
 
 export async function getVisibleSurvey(input: { repo: EventOsRepository; surveyId: string; actor?: RequestActor }) {
