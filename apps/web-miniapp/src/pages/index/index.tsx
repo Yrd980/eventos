@@ -26,8 +26,8 @@ export default function Index() {
   const [registrationForm, setRegistrationForm] = useState<RegistrationForm>()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [formAnswers, setFormAnswers] = useState<Record<string, string>>({})
-  const [apiBase, setApiBase] = useState(getApiBaseUrl())
-  const [token, setToken] = useState(getAuthingToken())
+  const [apiBase, setApiBase] = useState(() => getApiBaseUrl())
+  const [token, setToken] = useState(() => getAuthingToken())
   const [status, setStatus] = useState('加载活动中')
 
   async function loadParticipantResources(activityId: string) {
