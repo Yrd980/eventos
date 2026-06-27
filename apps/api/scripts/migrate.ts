@@ -1,19 +1,21 @@
 import { readdir } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPool, readDbConfig, readSqlFile, sha256 } from "./db";
+import { eq, sql } from "drizzle-orm";
+import { createScriptDb, readDbConfig, readSqlFile, sha256 } from "./db";
+import { schemaMigrations } from "../src/db/schema";
 
 const migrationsDir = resolve(fileURLToPath(new URL("../../../infra/sql/migrations", import.meta.url)));
 
-function sqlInsideMigrationTransaction(sql: string) {
-  const withoutBegin = sql.replace(/^\s*BEGIN;\s*/i, "");
+function sqlInsideMigrationTransaction(value: string) {
+  const withoutBegin = value.replace(/^\s*BEGIN;\s*/i, "");
   return withoutBegin.replace(/\s*COMMIT;\s*$/i, "");
 }
 
 async function main() {
-  const pool = createPool(readDbConfig());
+  const database = createScriptDb(readDbConfig());
   try {
-    await pool.query(`
+    await database.db.execute(sql`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         name text PRIMARY KEY,
         checksum text NOT NULL,
@@ -24,34 +26,26 @@ async function main() {
     const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
     for (const file of files) {
       const name = basename(file);
-      const sql = await readSqlFile(join(migrationsDir, file));
-      const checksum = sha256(sql);
-      const existing = await pool.query<{ checksum: string }>("SELECT checksum FROM schema_migrations WHERE name = $1", [name]);
+      const migrationSql = await readSqlFile(join(migrationsDir, file));
+      const checksum = sha256(migrationSql);
+      const existing = await database.db.select().from(schemaMigrations).where(eq(schemaMigrations.name, name)).limit(1);
 
-      if (existing.rowCount) {
-        if (existing.rows[0].checksum !== checksum) {
+      if (existing[0]) {
+        if (existing[0].checksum !== checksum) {
           throw new Error(`Migration ${name} was already applied with a different checksum`);
         }
         console.log(`skip ${name}`);
         continue;
       }
 
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        await client.query(sqlInsideMigrationTransaction(sql));
-        await client.query("INSERT INTO schema_migrations (name, checksum) VALUES ($1, $2)", [name, checksum]);
-        await client.query("COMMIT");
-        console.log(`applied ${name}`);
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      } finally {
-        client.release();
-      }
+      await database.db.transaction(async (tx) => {
+        await tx.execute(sql.raw(sqlInsideMigrationTransaction(migrationSql)));
+        await tx.insert(schemaMigrations).values({ name, checksum });
+      });
+      console.log(`applied ${name}`);
     }
   } finally {
-    await pool.end();
+    await database.close();
   }
 }
 

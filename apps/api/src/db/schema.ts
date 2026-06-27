@@ -125,6 +125,12 @@ export const activityPublications = pgTable(
   ],
 );
 
+export const schemaMigrations = pgTable("schema_migrations", {
+  name: text("name").primaryKey(),
+  checksum: text("checksum").notNull(),
+  executedAt: timestamp("executed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const sessionTracks = pgTable("session_tracks", {
   id: text("id").primaryKey(),
   activityId: text("activity_id")
@@ -324,6 +330,56 @@ export const expoBooths = pgTable("expo_booths", {
   status: text("status").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
 });
+
+export const liveEntries = pgTable("live_entries", {
+  id: text("id").primaryKey(),
+  activityId: text("activity_id")
+    .notNull()
+    .references(() => activities.id),
+  sessionId: text("session_id").references(() => sessions.id),
+  title: text("title").notNull(),
+  provider: text("provider").notNull(),
+  url: text("url"),
+  deepLink: text("deep_link"),
+  accessPolicy: text("access_policy").notNull(),
+  startTime: timestamp("start_time", { withTimezone: true }),
+  endTime: timestamp("end_time", { withTimezone: true }),
+  status: text("status").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const surveys = pgTable("surveys", {
+  id: text("id").primaryKey(),
+  activityId: text("activity_id")
+    .notNull()
+    .references(() => activities.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id"),
+  accessPolicy: text("access_policy").notNull(),
+  status: text("status").notNull(),
+});
+
+export const surveyQuestions = pgTable(
+  "survey_questions",
+  {
+    id: text("id").primaryKey(),
+    activityId: text("activity_id")
+      .notNull()
+      .references(() => activities.id),
+    surveyId: text("survey_id")
+      .notNull()
+      .references(() => surveys.id),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    type: text("type").notNull(),
+    required: boolean("required").notNull().default(false),
+    options: jsonb("options"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [unique("survey_questions_survey_key_unique").on(table.surveyId, table.key)],
+);
 
 export const pageConfigs = pgTable(
   "page_configs",
