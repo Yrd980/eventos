@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { MyAgendaItem, Notification, QRPass, Registration, Session } from '@eventos/contracts'
-import { getStoredActivityId, loadMyAgenda, loadNotifications, loadQRPass, loadRegistration, loadSessions, removeMyAgenda, type QRPassView } from '../../utils/api'
+import { loadMyAgenda, loadNotifications, loadQRPass, loadRegistration, loadSessions, removeMyAgenda, resolveActivityId, type QRPassView } from '../../utils/api'
 import './index.css'
 
 const tabs = ['Overview', 'QR Pass', 'My Agenda', 'Registration', 'Messages']
@@ -19,22 +19,26 @@ export default function MePage() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [status, setStatus] = useState('加载参与信息中')
-  const activityId = getStoredActivityId()
   const sessionById = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
 
   async function load() {
+    const activityId = await resolveActivityId()
     if (!activityId) {
       setStatus('请先在首页选择 Activity')
       return
     }
     try {
-      const [sessionRows, agendaRows, messageRows] = await Promise.all([loadSessions(activityId), loadMyAgenda(activityId), loadNotifications(activityId).catch(() => [])])
+      const [sessionRows, agendaRows, messageRows] = await Promise.all([
+        loadSessions(activityId).catch(() => []),
+        loadMyAgenda(activityId).catch(() => []),
+        loadNotifications(activityId).catch(() => []),
+      ])
       setSessions(sessionRows)
       setAgenda(agendaRows)
       setNotifications(messageRows)
-      setRegistration(await loadRegistration(activityId))
-      setQRPass(await loadQRPass(activityId))
       setStatus('参与信息已加载')
+      void loadRegistration(activityId).then(setRegistration).catch(() => setRegistration(undefined))
+      void loadQRPass(activityId).then(setQRPass).catch(() => setQRPass(undefined))
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error))
     }

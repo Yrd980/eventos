@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Input, Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { LiveEntry, Survey, SurveyQuestion } from '@eventos/contracts'
-import { getStoredActivityId, loadLiveEntries, loadSurveyQuestions, loadSurveys, submitSurveyResponse } from '../../utils/api'
+import { loadLiveEntries, loadSurveyQuestions, loadSurveys, resolveActivityId, submitSurveyResponse } from '../../utils/api'
 import './index.css'
 
 const actions = [
@@ -47,9 +47,9 @@ export default function AssistantPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [status, setStatus] = useState('加载参与资源中')
   const activeReply = replies[activeAction]
-  const activityId = getStoredActivityId()
 
   async function loadResources() {
+    const activityId = await resolveActivityId()
     if (!activityId) {
       setStatus('请先在首页选择 Activity')
       return
@@ -63,8 +63,9 @@ export default function AssistantPage() {
       setSurveys(surveyRows)
       setSelectedSurvey(surveyRows[0])
       if (surveyRows[0]) {
-        const detail = await loadSurveyQuestions(surveyRows[0].id)
-        setQuestions(detail.questions)
+        void loadSurveyQuestions(surveyRows[0].id).then((detail) => setQuestions(detail.questions)).catch(() => setQuestions([]))
+      } else {
+        setQuestions([])
       }
       setStatus('参与资源已加载')
     } catch (error) {

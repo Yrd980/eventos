@@ -115,6 +115,7 @@ export async function apiRequest<T>(path: string, options: { method?: string; bo
       method: (options.method ?? 'GET') as keyof Taro.request.Method,
       header: headers,
       data: options.body,
+      timeout: 8000,
     })
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : `API request failed: ${path}`)
@@ -132,6 +133,16 @@ export async function apiRequest<T>(path: string, options: { method?: string; bo
 
 export async function loadActivities() {
   return apiRequest<Activity[]>('/activities', { auth: false })
+}
+
+export async function resolveActivityId() {
+  const storedId = getStoredActivityId()
+  if (storedId) return storedId
+
+  const activities = await loadActivities()
+  const activityId = activities[0]?.id
+  if (activityId) setStoredActivityId(activityId)
+  return activityId ?? ''
 }
 
 export async function loadActivity(activityId: string) {

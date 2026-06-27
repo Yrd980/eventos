@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import type { ExpoBooth } from '@eventos/contracts'
-import { getStoredActivityId, loadExpoBooths } from '../../utils/api'
+import { loadExpoBooths, resolveActivityId } from '../../utils/api'
 import './index.css'
 
 export default function ExpoPage() {
@@ -11,7 +11,7 @@ export default function ExpoPage() {
   const activeItem = items.find((item) => item.id === activeId) ?? items[0]
 
   async function load() {
-    const activityId = getStoredActivityId()
+    const activityId = await resolveActivityId()
     if (!activityId) {
       setStatus('请先在首页选择 Activity')
       return

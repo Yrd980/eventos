@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { MyAgendaItem, Session } from '@eventos/contracts'
-import { addMyAgenda, getStoredActivityId, loadMyAgenda, loadSessions } from '../../utils/api'
+import { addMyAgenda, loadMyAgenda, loadSessions, resolveActivityId } from '../../utils/api'
 import './index.css'
 
 function timeRange(session: Session) {
@@ -14,11 +14,11 @@ export default function SchedulePage() {
   const [agenda, setAgenda] = useState<MyAgendaItem[]>([])
   const [selected, setSelected] = useState<string>()
   const [status, setStatus] = useState('加载日程中')
-  const activityId = getStoredActivityId()
   const selectedSession = sessions.find((item) => item.id === selected) ?? sessions[0]
   const agendaSet = useMemo(() => new Set(agenda.map((item) => item.session_id)), [agenda])
 
   async function load() {
+    const activityId = await resolveActivityId()
     if (!activityId) {
       setStatus('请先在首页选择 Activity')
       return
@@ -28,11 +28,7 @@ export default function SchedulePage() {
       setSessions(rows)
       setSelected(rows[0]?.id)
       setStatus(rows.length ? '日程已加载' : '暂无 Session')
-      try {
-        setAgenda(await loadMyAgenda(activityId))
-      } catch {
-        setAgenda([])
-      }
+      void loadMyAgenda(activityId).then(setAgenda).catch(() => setAgenda([]))
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error))
     }

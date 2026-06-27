@@ -1,24 +1,21 @@
 .page {
-  min-height: 100dvh;
+  min-height: 100vh;
   padding: 22rpx 20rpx 140rpx;
-  background:
-    radial-gradient(circle at 12% 10%, rgba(88, 104, 244, 0.08), transparent 18%),
-    linear-gradient(180deg, #f6f7fb 0%, #edf1f6 100%);
+  background: linear-gradient(180deg, #f6f7fb 0%, #edf1f6 100%);
 }
 
 .expo-map {
   padding: 18rpx;
-  border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.48);
-  border: 2rpx solid rgba(15, 23, 42, 0.05);
+  border: 1rpx solid rgba(15, 23, 42, 0.06);
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .expo-map__title {
   display: block;
   color: #0f172a;
-  font-size: 48rpx;
-  font-weight: 700;
-  letter-spacing: -0.05em;
+  font-size: 42rpx;
+  font-weight: 800;
 }
 
 .expo-map__sub {
@@ -37,96 +34,94 @@
 
 .expo-map__node {
   padding: 14rpx 16rpx;
-  border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.58);
+  border-radius: 16rpx;
+  background: rgba(15, 23, 42, 0.05);
 }
 
 .expo-map__node--main {
-  background: rgba(88, 104, 244, 0.12);
+  background: rgba(64, 83, 230, 0.12);
+}
+
+.expo-map__nodeTitle {
+  color: #0f172a;
+  font-size: 26rpx;
+  font-weight: 800;
 }
 
 .expo-focus {
   margin-top: 16rpx;
   padding: 16rpx;
   border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.62);
+  background: #fff;
+}
+
+.expo-focus__code,
+.expo-focus__title,
+.expo-focus__meta {
+  display: block;
 }
 
 .expo-focus__code {
-  display: block;
   color: #4053e6;
   font-size: 20rpx;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .expo-focus__title {
-  display: block;
   margin-top: 4rpx;
   color: #0f172a;
   font-size: 28rpx;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .expo-focus__meta {
-  display: block;
   margin-top: 4rpx;
   color: rgba(15, 23, 42, 0.64);
   font-size: 22rpx;
+  line-height: 1.45;
 }
 
 .expo-focus__cta {
-  display: inline-flex;
+  display: block;
   margin-top: 12rpx;
-  padding: 10rpx 16rpx;
+  padding: 12rpx 16rpx;
   border-radius: 999rpx;
   background: #4053e6;
   color: #fff;
   font-size: 22rpx;
-  font-weight: 700;
-}
-
-.expo-map__nodeTitle {
-  color: #0f172a;
-  font-size: 26rpx;
-  font-weight: 700;
-}
-
-.expo-map__line {
-  height: 12rpx;
-  margin-left: 18rpx;
-  border-left: 2rpx dashed rgba(15, 23, 42, 0.14);
-}
-
-.expo-map__line--short {
-  height: 8rpx;
+  font-weight: 800;
+  text-align: center;
 }
 
 .list {
   display: flex;
   flex-direction: column;
   margin-top: 16rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .list__row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 18rpx;
-  padding: 14rpx 0;
+  padding: 16rpx;
   border-bottom: 1rpx solid rgba(15, 23, 42, 0.06);
 }
 
 .list__row--active {
-  background: rgba(64, 83, 230, 0.05);
+  background: rgba(64, 83, 230, 0.08);
 }
 
 .list__code {
+  width: 96rpx;
   color: #4053e6;
   font-size: 22rpx;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .list__content {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 4rpx;
@@ -135,10 +130,11 @@
 .list__title {
   color: #0f172a;
   font-size: 26rpx;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .list__meta {
   color: rgba(15, 23, 42, 0.58);
   font-size: 22rpx;
+  line-height: 1.45;
 }
