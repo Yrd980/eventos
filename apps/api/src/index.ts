@@ -74,11 +74,19 @@ const database = createDb(env);
 const verifier = createAuthingVerifier(env);
 const realtime = createRedisRealtimePublisher(env);
 const app = new Hono();
+const fixedCmsOrigins = new Set(["http://127.0.0.1:5174", "http://localhost:5174"]);
+const devCmsOriginPattern = /^http:\/\/(127\.0\.0\.1|localhost):51\d{2}$/;
+
+function cmsCorsOrigin(origin: string) {
+  if (fixedCmsOrigins.has(origin)) return origin;
+  if (env.nodeEnv === "development" && devCmsOriginPattern.test(origin)) return origin;
+  return undefined;
+}
 
 app.use(
   "*",
   cors({
-    origin: ["http://127.0.0.1:5174", "http://localhost:5174"],
+    origin: cmsCorsOrigin,
     allowHeaders: ["content-type", "authorization", "idempotency-key"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   }),
