@@ -13,7 +13,9 @@ import {
   createOperatorActivity,
   createOperatorBlock,
   createOperatorExpoBooth,
+  createOperatorLiveEntry,
   createOperatorTenantResource,
+  createOperatorSurvey,
   grantOperatorStaff,
   createOperatorSession,
   listOperatorActivities,
@@ -23,10 +25,14 @@ import {
   rollbackOperatorActivity,
   updateOperatorActivity,
   updateOperatorExpoBooth,
+  updateOperatorLiveEntry,
   updateOperatorSession,
+  updateOperatorSurvey,
   updateOperatorTenantResource,
   upsertOperatorActivityOrganizer,
+  upsertOperatorRegistrationForm,
   upsertOperatorSessionSpeaker,
+  upsertOperatorSurveyQuestion,
   upsertOperatorPageConfig,
 } from "./services/operator";
 import {
@@ -85,6 +91,100 @@ const expoBoothUpdateBodySchema = expoBoothCreateBodySchema
   .partial()
   .refine((body) => Object.keys(body).length > 0, {
     message: "At least one field is required",
+  });
+
+const nullableStringSchema = z.string().min(1).nullable().optional();
+
+const liveEntryCreateBodySchema = z.object({
+  session_id: z.string().min(1).optional(),
+  title: z.string().min(1),
+  provider: z.enum(["external_link", "miniapp_page", "embedded", "other"]),
+  url: z.string().min(1).optional(),
+  deep_link: z.string().min(1).optional(),
+  access_policy: z.enum(["public", "confirmed_registration"]).default("public"),
+  start_time: z.string().datetime().optional(),
+  end_time: z.string().datetime().optional(),
+  status: z.enum(["draft", "scheduled", "live", "ended", "hidden"]).default("draft"),
+  sort_order: z.number().int().min(0).default(0),
+});
+
+const liveEntryUpdateBodySchema = liveEntryCreateBodySchema
+  .extend({
+    session_id: z.string().min(1).nullable().optional(),
+    url: nullableStringSchema,
+    deep_link: nullableStringSchema,
+    start_time: z.string().datetime().nullable().optional(),
+    end_time: z.string().datetime().nullable().optional(),
+  })
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "At least one field is required",
+  });
+
+const registrationFormFieldSchema = z
+  .object({
+    id: z.string().min(1),
+    key: z.string().min(1),
+    label: z.string().min(1),
+    type: z.enum(["text", "phone", "email", "select", "multi_select", "boolean"]),
+    required: z.boolean().default(false),
+    options: z.array(z.object({ label: z.string().min(1), value: z.string().min(1) })).optional(),
+  })
+  .refine((field) => (field.type === "select" || field.type === "multi_select" ? Boolean(field.options?.length) : true), {
+    message: "options are required for select fields",
+    path: ["options"],
+  });
+
+const registrationFormBodySchema = z.object({
+  id: z.string().min(1).optional(),
+  title: z.string().min(1),
+  fields: z.array(registrationFormFieldSchema).default([]),
+});
+
+const surveyCreateBodySchema = z
+  .object({
+    title: z.string().min(1),
+    description: z.string().min(1).optional(),
+    target_type: z.enum(["activity", "session", "expo_booth", "live_entry"]).default("activity"),
+    target_id: z.string().min(1).optional(),
+    access_policy: z.enum(["public", "confirmed_registration"]).default("confirmed_registration"),
+    status: z.enum(["draft", "published", "closed"]).default("draft"),
+  })
+  .refine((body) => (body.target_type === "activity" ? body.target_id === undefined : body.target_id !== undefined), {
+    message: "target_id must match target_type",
+    path: ["target_id"],
+  });
+
+const surveyUpdateBodySchema = z
+  .object({
+    title: z.string().min(1).optional(),
+    description: nullableStringSchema,
+    target_type: z.enum(["activity", "session", "expo_booth", "live_entry"]).optional(),
+    target_id: nullableStringSchema,
+    access_policy: z.enum(["public", "confirmed_registration"]).optional(),
+    status: z.enum(["draft", "published", "closed"]).optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, {
+    message: "At least one field is required",
+  })
+  .refine((body) => (body.target_type === "activity" ? body.target_id === undefined || body.target_id === null : true), {
+    message: "Activity-targeted Survey must not include target_id",
+    path: ["target_id"],
+  });
+
+const surveyQuestionBodySchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    key: z.string().min(1),
+    label: z.string().min(1),
+    type: z.enum(["text", "single_choice", "multiple_choice", "rating", "boolean"]),
+    required: z.boolean().default(false),
+    options: z.array(z.object({ label: z.string().min(1), value: z.string().min(1) })).optional(),
+    sort_order: z.number().int().min(0).default(0),
+  })
+  .refine((question) => (question.type === "single_choice" || question.type === "multiple_choice" ? Boolean(question.options?.length) : true), {
+    message: "options are required for choice questions",
+    path: ["options"],
   });
 
 function parseJsonBody<T>(schema: z.ZodType<T>, body: Record<string, unknown>) {
@@ -350,6 +450,190 @@ app.patch("/operator/expo-booths/:expoBoothId", async (c) =>
       idempotencyKey: requireIdempotencyKey(c),
       request: { expoBoothId, body },
       execute: () => updateOperatorExpoBooth({ repo, actor, expoBoothId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/activities/:activityId/live-entries", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(await repo.listOperatorLiveEntries(activityId)));
+  }),
+);
+
+app.post("/operator/activities/:activityId/live-entries", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(liveEntryCreateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.live_entry.create",
+      resourceType: "live_entry",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => createOperatorLiveEntry({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.patch("/operator/live-entries/:liveEntryId", async (c) =>
+  withTransaction(async (repo) => {
+    const liveEntryId = c.req.param("liveEntryId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(liveEntryUpdateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.live_entry.update",
+      resourceType: "live_entry",
+      resourceId: liveEntryId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { liveEntryId, body },
+      execute: () => updateOperatorLiveEntry({ repo, actor, liveEntryId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/activities/:activityId/registration-forms", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(await repo.listRegistrationForms(activityId)));
+  }),
+);
+
+app.put("/operator/activities/:activityId/registration-forms", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(registrationFormBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.registration_form.upsert",
+      resourceType: "registration_form",
+      resourceId: body.id ?? activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => upsertOperatorRegistrationForm({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.post("/operator/activities/:activityId/registration-forms", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(registrationFormBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.registration_form.upsert",
+      resourceType: "registration_form",
+      resourceId: body.id ?? activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => upsertOperatorRegistrationForm({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/activities/:activityId/surveys", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    await requireOperatorActivity({ repo, actor, activityId });
+    return c.json(success(await repo.listSurveys(activityId)));
+  }),
+);
+
+app.post("/operator/activities/:activityId/surveys", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(surveyCreateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.survey.create",
+      resourceType: "survey",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => createOperatorSurvey({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.patch("/operator/surveys/:surveyId", async (c) =>
+  withTransaction(async (repo) => {
+    const surveyId = c.req.param("surveyId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(surveyUpdateBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.survey.update",
+      resourceType: "survey",
+      resourceId: surveyId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { surveyId, body },
+      execute: () => updateOperatorSurvey({ repo, actor, surveyId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/surveys/:surveyId/questions", async (c) =>
+  withRepo(async (repo) => {
+    const surveyId = c.req.param("surveyId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const survey = await repo.getSurvey(surveyId);
+    if (!survey) {
+      throw new DomainError("SURVEY_NOT_FOUND", "Survey was not found", { status: 404 });
+    }
+    await requireOperatorActivity({ repo, actor, activityId: survey.activity_id });
+    return c.json(success(await repo.listSurveyQuestions(surveyId)));
+  }),
+);
+
+app.post("/operator/surveys/:surveyId/questions", async (c) =>
+  withTransaction(async (repo) => {
+    const surveyId = c.req.param("surveyId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(surveyQuestionBodySchema, await readJsonObject(c));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.survey_question.upsert",
+      resourceType: "survey",
+      resourceId: surveyId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { surveyId, body },
+      execute: () => upsertOperatorSurveyQuestion({ repo, actor, surveyId, body }),
     });
     return c.json(success(result));
   }),

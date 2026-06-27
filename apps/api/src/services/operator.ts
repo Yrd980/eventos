@@ -1,4 +1,4 @@
-import type { Activity, Block, BusinessResourceType, ExpoBooth, PageConfig, Session } from "@eventos/contracts";
+import type { Activity, Block, BusinessResourceType, ExpoBooth, LiveEntry, PageConfig, RegistrationForm, Session, Survey, SurveyQuestion } from "@eventos/contracts";
 import type { RequestActor } from "../auth/authing";
 import { DomainError } from "../http/envelope";
 import { createId, stableHash } from "./ids";
@@ -545,6 +545,60 @@ async function assertSponsorTenantBoundary(input: { repo: EventOsRepository; spo
   return sponsor;
 }
 
+async function assertSessionActivityBoundary(input: { repo: EventOsRepository; sessionId?: string | null; activityId: string }) {
+  if (!input.sessionId) {
+    return undefined;
+  }
+
+  const session = await input.repo.getSession(input.sessionId);
+  if (!session) {
+    throw new DomainError("SESSION_NOT_FOUND", "Session was not found", { status: 404 });
+  }
+  if (session.activity_id !== input.activityId) {
+    throw new DomainError("SESSION_ACTIVITY_MISMATCH", "Session belongs to a different Activity", { status: 422 });
+  }
+
+  return session;
+}
+
+async function assertSurveyTargetBoundary(input: { repo: EventOsRepository; activityId: string; targetType: Survey["target_type"]; targetId?: string | null }) {
+  if (input.targetType === "activity") {
+    if (input.targetId) {
+      throw new DomainError("VALIDATION_FAILED", "Activity-targeted Survey must not include target_id", { status: 422 });
+    }
+    return undefined;
+  }
+
+  if (!input.targetId) {
+    throw new DomainError("VALIDATION_FAILED", "target_id is required for the selected Survey target_type", { status: 422 });
+  }
+
+  if (input.targetType === "session") {
+    await assertSessionActivityBoundary({ repo: input.repo, activityId: input.activityId, sessionId: input.targetId });
+    return input.targetId;
+  }
+
+  if (input.targetType === "expo_booth") {
+    const booth = await input.repo.getExpoBooth(input.targetId);
+    if (!booth) {
+      throw new DomainError("EXPO_BOOTH_NOT_FOUND", "Expo Booth was not found", { status: 404 });
+    }
+    if (booth.activity_id !== input.activityId) {
+      throw new DomainError("TENANT_MISMATCH", "Expo Booth belongs to a different Activity", { status: 422 });
+    }
+    return input.targetId;
+  }
+
+  const liveEntry = await input.repo.getLiveEntry(input.targetId);
+  if (!liveEntry) {
+    throw new DomainError("LIVE_ENTRY_NOT_FOUND", "Live Entry was not found", { status: 404 });
+  }
+  if (liveEntry.activity_id !== input.activityId) {
+    throw new DomainError("TENANT_MISMATCH", "Live Entry belongs to a different Activity", { status: 422 });
+  }
+  return input.targetId;
+}
+
 export async function createOperatorExpoBooth(input: {
   repo: EventOsRepository;
   actor: RequestActor;
@@ -641,6 +695,291 @@ export async function updateOperatorExpoBooth(input: {
   });
 
   return booth;
+}
+
+export async function createOperatorLiveEntry(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  activityId: string;
+  body: {
+    session_id?: string;
+    title: string;
+    provider: LiveEntry["provider"];
+    url?: string;
+    deep_link?: string;
+    access_policy: LiveEntry["access_policy"];
+    start_time?: string;
+    end_time?: string;
+    status: LiveEntry["status"];
+    sort_order: number;
+  };
+}) {
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: input.activityId });
+  const session = await assertSessionActivityBoundary({ repo: input.repo, activityId: activity.id, sessionId: input.body.session_id });
+  const entry = await input.repo.createLiveEntry({
+    id: createId("liv"),
+    activityId: activity.id,
+    sessionId: session?.id,
+    title: input.body.title,
+    provider: input.body.provider,
+    url: input.body.url,
+    deepLink: input.body.deep_link,
+    accessPolicy: input.body.access_policy,
+    startTime: input.body.start_time ? new Date(input.body.start_time) : undefined,
+    endTime: input.body.end_time ? new Date(input.body.end_time) : undefined,
+    status: input.body.status,
+    sortOrder: input.body.sort_order,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "live_entry.created",
+    resourceType: "live_entry",
+    resourceId: entry.id,
+    metadata: { session_id: session?.id },
+  });
+
+  return entry;
+}
+
+export async function updateOperatorLiveEntry(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  liveEntryId: string;
+  body: {
+    session_id?: string | null;
+    title?: string;
+    provider?: LiveEntry["provider"];
+    url?: string | null;
+    deep_link?: string | null;
+    access_policy?: LiveEntry["access_policy"];
+    start_time?: string | null;
+    end_time?: string | null;
+    status?: LiveEntry["status"];
+    sort_order?: number;
+  };
+}) {
+  const existing = await input.repo.getLiveEntry(input.liveEntryId);
+  if (!existing) {
+    throw new DomainError("LIVE_ENTRY_NOT_FOUND", "Live Entry was not found", { status: 404 });
+  }
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: existing.activity_id });
+  const hasSessionUpdate = Object.hasOwn(input.body, "session_id");
+  const session = hasSessionUpdate
+    ? await assertSessionActivityBoundary({ repo: input.repo, activityId: activity.id, sessionId: input.body.session_id })
+    : undefined;
+
+  const entry = await input.repo.updateLiveEntry({
+    id: input.liveEntryId,
+    sessionId: hasSessionUpdate ? (session?.id ?? null) : undefined,
+    title: input.body.title,
+    provider: input.body.provider,
+    url: input.body.url,
+    deepLink: input.body.deep_link,
+    accessPolicy: input.body.access_policy,
+    startTime: input.body.start_time === undefined ? undefined : input.body.start_time === null ? null : new Date(input.body.start_time),
+    endTime: input.body.end_time === undefined ? undefined : input.body.end_time === null ? null : new Date(input.body.end_time),
+    status: input.body.status,
+    sortOrder: input.body.sort_order,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "live_entry.updated",
+    resourceType: "live_entry",
+    resourceId: input.liveEntryId,
+    metadata: { session_id: hasSessionUpdate ? (session?.id ?? null) : existing.session_id },
+  });
+
+  return entry;
+}
+
+export async function upsertOperatorRegistrationForm(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  activityId: string;
+  body: {
+    id?: string;
+    title: string;
+    fields: RegistrationForm["fields"];
+  };
+}) {
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: input.activityId });
+  if (input.body.id) {
+    const existing = await input.repo.getRegistrationForm(input.body.id);
+    if (existing && existing.activity_id !== activity.id) {
+      throw new DomainError("TENANT_MISMATCH", "Registration Form belongs to a different Activity", { status: 403 });
+    }
+  }
+
+  const form = await input.repo.upsertRegistrationForm({
+    id: input.body.id ?? createId("rgf"),
+    activityId: activity.id,
+    title: input.body.title,
+    fields: input.body.fields,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "registration_form.upserted",
+    resourceType: "registration_form",
+    resourceId: form.id,
+  });
+
+  return form;
+}
+
+export async function createOperatorSurvey(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  activityId: string;
+  body: {
+    title: string;
+    description?: string;
+    target_type: Survey["target_type"];
+    target_id?: string;
+    access_policy: Survey["access_policy"];
+    status: Survey["status"];
+  };
+}) {
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: input.activityId });
+  const targetId = await assertSurveyTargetBoundary({
+    repo: input.repo,
+    activityId: activity.id,
+    targetType: input.body.target_type,
+    targetId: input.body.target_id,
+  });
+  const survey = await input.repo.createSurvey({
+    id: createId("srv"),
+    activityId: activity.id,
+    title: input.body.title,
+    description: input.body.description,
+    targetType: input.body.target_type,
+    targetId,
+    accessPolicy: input.body.access_policy,
+    status: input.body.status,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "survey.created",
+    resourceType: "survey",
+    resourceId: survey.id,
+    metadata: { target_type: survey.target_type, target_id: survey.target_id },
+  });
+
+  return survey;
+}
+
+export async function updateOperatorSurvey(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  surveyId: string;
+  body: {
+    title?: string;
+    description?: string | null;
+    target_type?: Survey["target_type"];
+    target_id?: string | null;
+    access_policy?: Survey["access_policy"];
+    status?: Survey["status"];
+  };
+}) {
+  const existing = await input.repo.getSurvey(input.surveyId);
+  if (!existing) {
+    throw new DomainError("SURVEY_NOT_FOUND", "Survey was not found", { status: 404 });
+  }
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: existing.activity_id });
+  const targetType = input.body.target_type ?? existing.target_type;
+  const hasTargetUpdate = Object.hasOwn(input.body, "target_type") || Object.hasOwn(input.body, "target_id");
+  const targetId = hasTargetUpdate
+    ? await assertSurveyTargetBoundary({
+        repo: input.repo,
+        activityId: activity.id,
+        targetType,
+        targetId: input.body.target_id,
+      })
+    : undefined;
+
+  const survey = await input.repo.updateSurvey({
+    id: input.surveyId,
+    title: input.body.title,
+    description: input.body.description,
+    targetType: input.body.target_type,
+    targetId: hasTargetUpdate ? (targetId ?? null) : undefined,
+    accessPolicy: input.body.access_policy,
+    status: input.body.status,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "survey.updated",
+    resourceType: "survey",
+    resourceId: input.surveyId,
+    metadata: { target_type: survey.target_type, target_id: survey.target_id },
+  });
+
+  return survey;
+}
+
+export async function upsertOperatorSurveyQuestion(input: {
+  repo: EventOsRepository;
+  actor: RequestActor;
+  surveyId: string;
+  body: {
+    id?: string;
+    key: string;
+    label: string;
+    type: SurveyQuestion["type"];
+    required: boolean;
+    options?: SurveyQuestion["options"];
+    sort_order: number;
+  };
+}) {
+  const survey = await input.repo.getSurvey(input.surveyId);
+  if (!survey) {
+    throw new DomainError("SURVEY_NOT_FOUND", "Survey was not found", { status: 404 });
+  }
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: survey.activity_id });
+  if (input.body.id) {
+    const existing = await input.repo.getSurveyQuestion(input.body.id);
+    if (existing && existing.survey_id !== survey.id) {
+      throw new DomainError("TENANT_MISMATCH", "Survey Question belongs to a different Survey", { status: 403 });
+    }
+  }
+
+  const question = await input.repo.upsertSurveyQuestion({
+    id: input.body.id ?? createId("svq"),
+    activityId: activity.id,
+    surveyId: survey.id,
+    key: input.body.key,
+    label: input.body.label,
+    type: input.body.type,
+    required: input.body.required,
+    options: input.body.options,
+    sortOrder: input.body.sort_order,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "survey_question.upserted",
+    resourceType: "survey",
+    resourceId: survey.id,
+    metadata: { question_id: question.id, key: question.key },
+  });
+
+  return question;
 }
 
 async function buildPublicationSnapshot(repo: EventOsRepository, activity: Activity) {

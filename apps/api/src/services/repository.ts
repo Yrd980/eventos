@@ -9,16 +9,20 @@ import type {
   CheckinAttempt,
   DomainErrorCode,
   ExpoBooth,
+  LiveEntry,
   MyAgendaItem,
   Organizer,
   PageConfig,
   QRPass,
   Registration,
+  RegistrationForm,
   Session,
   SessionSpeaker,
   Speaker,
   Sponsor,
   StaffGrant,
+  Survey,
+  SurveyQuestion,
   Tenant,
   User,
 } from "@eventos/contracts";
@@ -33,6 +37,7 @@ import {
   checkins,
   idempotencyRecords,
   expoBooths,
+  liveEntries,
   myAgendaItems,
   blocks,
   operatorGrants,
@@ -40,6 +45,7 @@ import {
   pageConfigs,
   participants,
   qrPasses,
+  registrationForms,
   registrations,
   sessions,
   sessionSpeakers,
@@ -47,6 +53,8 @@ import {
   speakers,
   sponsors,
   staffGrants,
+  surveyQuestions,
+  surveys,
   tenants,
   users,
 } from "../db/schema";
@@ -296,6 +304,60 @@ function mapExpoBooth(row: typeof expoBooths.$inferSelect): ExpoBooth {
     location: optional(row.location),
     logo_url: optional(row.logoUrl),
     status: row.status as ExpoBooth["status"],
+    sort_order: row.sortOrder,
+  };
+}
+
+function mapLiveEntry(row: typeof liveEntries.$inferSelect): LiveEntry {
+  return {
+    id: row.id,
+    activity_id: row.activityId,
+    session_id: optional(row.sessionId),
+    title: row.title,
+    provider: row.provider as LiveEntry["provider"],
+    url: optional(row.url),
+    deep_link: optional(row.deepLink),
+    access_policy: row.accessPolicy as LiveEntry["access_policy"],
+    start_time: row.startTime ? iso(row.startTime) : undefined,
+    end_time: row.endTime ? iso(row.endTime) : undefined,
+    status: row.status as LiveEntry["status"],
+    sort_order: row.sortOrder,
+  };
+}
+
+function mapRegistrationForm(row: typeof registrationForms.$inferSelect): RegistrationForm {
+  return {
+    id: row.id,
+    activity_id: row.activityId,
+    title: row.title,
+    fields: row.fields as RegistrationForm["fields"],
+    created_at: iso(row.createdAt),
+    updated_at: iso(row.updatedAt),
+  };
+}
+
+function mapSurvey(row: typeof surveys.$inferSelect): Survey {
+  return {
+    id: row.id,
+    activity_id: row.activityId,
+    title: row.title,
+    description: optional(row.description),
+    target_type: row.targetType as Survey["target_type"],
+    target_id: optional(row.targetId),
+    access_policy: row.accessPolicy as Survey["access_policy"],
+    status: row.status as Survey["status"],
+  };
+}
+
+function mapSurveyQuestion(row: typeof surveyQuestions.$inferSelect): SurveyQuestion {
+  return {
+    id: row.id,
+    survey_id: row.surveyId,
+    key: row.key,
+    label: row.label,
+    type: row.type as SurveyQuestion["type"],
+    required: row.required,
+    options: optional(row.options as SurveyQuestion["options"] | null),
     sort_order: row.sortOrder,
   };
 }
@@ -631,6 +693,237 @@ export function createRepository(db: DbSession) {
         .where(eq(expoBooths.id, input.id))
         .returning();
       return first(rows.map(mapExpoBooth));
+    },
+
+    async listOperatorLiveEntries(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(liveEntries)
+          .where(eq(liveEntries.activityId, activityId))
+          .orderBy(liveEntries.sortOrder, liveEntries.startTime, liveEntries.id)
+      ).map(mapLiveEntry);
+    },
+
+    async getLiveEntry(liveEntryId: string) {
+      return first((await db.select().from(liveEntries).where(eq(liveEntries.id, liveEntryId)).limit(1)).map(mapLiveEntry));
+    },
+
+    async createLiveEntry(input: {
+      id: string;
+      activityId: string;
+      sessionId?: string;
+      title: string;
+      provider: LiveEntry["provider"];
+      url?: string;
+      deepLink?: string;
+      accessPolicy: LiveEntry["access_policy"];
+      startTime?: Date;
+      endTime?: Date;
+      status: LiveEntry["status"];
+      sortOrder: number;
+    }) {
+      const rows = await db
+        .insert(liveEntries)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          sessionId: input.sessionId,
+          title: input.title,
+          provider: input.provider,
+          url: input.url,
+          deepLink: input.deepLink,
+          accessPolicy: input.accessPolicy,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          status: input.status,
+          sortOrder: input.sortOrder,
+        })
+        .returning();
+      return mapLiveEntry(rows[0]);
+    },
+
+    async updateLiveEntry(input: {
+      id: string;
+      sessionId?: string | null;
+      title?: string;
+      provider?: LiveEntry["provider"];
+      url?: string | null;
+      deepLink?: string | null;
+      accessPolicy?: LiveEntry["access_policy"];
+      startTime?: Date | null;
+      endTime?: Date | null;
+      status?: LiveEntry["status"];
+      sortOrder?: number;
+    }) {
+      const rows = await db
+        .update(liveEntries)
+        .set({
+          sessionId: input.sessionId === undefined ? undefined : input.sessionId,
+          title: input.title,
+          provider: input.provider,
+          url: input.url === undefined ? undefined : input.url,
+          deepLink: input.deepLink === undefined ? undefined : input.deepLink,
+          accessPolicy: input.accessPolicy,
+          startTime: input.startTime === undefined ? undefined : input.startTime,
+          endTime: input.endTime === undefined ? undefined : input.endTime,
+          status: input.status,
+          sortOrder: input.sortOrder,
+        })
+        .where(eq(liveEntries.id, input.id))
+        .returning();
+      return first(rows.map(mapLiveEntry));
+    },
+
+    async listRegistrationForms(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(registrationForms)
+          .where(eq(registrationForms.activityId, activityId))
+          .orderBy(desc(registrationForms.updatedAt), registrationForms.id)
+      ).map(mapRegistrationForm);
+    },
+
+    async getRegistrationForm(registrationFormId: string) {
+      return first((await db.select().from(registrationForms).where(eq(registrationForms.id, registrationFormId)).limit(1)).map(mapRegistrationForm));
+    },
+
+    async upsertRegistrationForm(input: { id: string; activityId: string; title: string; fields: RegistrationForm["fields"] }) {
+      const rows = await db
+        .insert(registrationForms)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          title: input.title,
+          fields: input.fields,
+        })
+        .onConflictDoUpdate({
+          target: registrationForms.id,
+          set: {
+            title: input.title,
+            fields: input.fields,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return mapRegistrationForm(rows[0]);
+    },
+
+    async listSurveys(activityId: string) {
+      return (
+        await db
+          .select()
+          .from(surveys)
+          .where(eq(surveys.activityId, activityId))
+          .orderBy(surveys.status, surveys.title, surveys.id)
+      ).map(mapSurvey);
+    },
+
+    async getSurvey(surveyId: string) {
+      return first((await db.select().from(surveys).where(eq(surveys.id, surveyId)).limit(1)).map(mapSurvey));
+    },
+
+    async createSurvey(input: {
+      id: string;
+      activityId: string;
+      title: string;
+      description?: string;
+      targetType: Survey["target_type"];
+      targetId?: string;
+      accessPolicy: Survey["access_policy"];
+      status: Survey["status"];
+    }) {
+      const rows = await db
+        .insert(surveys)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          title: input.title,
+          description: input.description,
+          targetType: input.targetType,
+          targetId: input.targetId,
+          accessPolicy: input.accessPolicy,
+          status: input.status,
+        })
+        .returning();
+      return mapSurvey(rows[0]);
+    },
+
+    async updateSurvey(input: {
+      id: string;
+      title?: string;
+      description?: string | null;
+      targetType?: Survey["target_type"];
+      targetId?: string | null;
+      accessPolicy?: Survey["access_policy"];
+      status?: Survey["status"];
+    }) {
+      const rows = await db
+        .update(surveys)
+        .set({
+          title: input.title,
+          description: input.description === undefined ? undefined : input.description,
+          targetType: input.targetType,
+          targetId: input.targetId === undefined ? undefined : input.targetId,
+          accessPolicy: input.accessPolicy,
+          status: input.status,
+        })
+        .where(eq(surveys.id, input.id))
+        .returning();
+      return first(rows.map(mapSurvey));
+    },
+
+    async listSurveyQuestions(surveyId: string) {
+      return (
+        await db
+          .select()
+          .from(surveyQuestions)
+          .where(eq(surveyQuestions.surveyId, surveyId))
+          .orderBy(surveyQuestions.sortOrder, surveyQuestions.id)
+      ).map(mapSurveyQuestion);
+    },
+
+    async getSurveyQuestion(questionId: string) {
+      return first((await db.select().from(surveyQuestions).where(eq(surveyQuestions.id, questionId)).limit(1)).map(mapSurveyQuestion));
+    },
+
+    async upsertSurveyQuestion(input: {
+      id: string;
+      activityId: string;
+      surveyId: string;
+      key: string;
+      label: string;
+      type: SurveyQuestion["type"];
+      required: boolean;
+      options?: SurveyQuestion["options"];
+      sortOrder: number;
+    }) {
+      const rows = await db
+        .insert(surveyQuestions)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          surveyId: input.surveyId,
+          key: input.key,
+          label: input.label,
+          type: input.type,
+          required: input.required,
+          options: input.options,
+          sortOrder: input.sortOrder,
+        })
+        .onConflictDoUpdate({
+          target: [surveyQuestions.surveyId, surveyQuestions.key],
+          set: {
+            label: input.label,
+            type: input.type,
+            required: input.required,
+            options: input.options,
+            sortOrder: input.sortOrder,
+          },
+        })
+        .returning();
+      return mapSurveyQuestion(rows[0]);
     },
 
     async countScheduledSessions(activityId: string) {
