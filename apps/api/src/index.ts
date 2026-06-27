@@ -240,21 +240,22 @@ const notificationAudienceRuleSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("custom_segment"), segment_id: z.string().min(1) }),
 ]);
 
-const notificationCreateBodySchema = z
-  .object({
-    title: z.string().min(1),
-    content: z.string().min(1),
-    channel: z.enum(["miniapp", "sms", "email", "wechat"]).default("miniapp"),
-    audience_rule: notificationAudienceRuleSchema,
-    status: z.enum(["draft", "scheduled", "sending", "sent", "cancelled"]).default("draft"),
-    scheduled_at: z.string().datetime().optional(),
-  })
+const notificationBodyBaseSchema = z.object({
+  title: z.string().min(1),
+  content: z.string().min(1),
+  channel: z.enum(["miniapp", "sms", "email", "wechat"]).default("miniapp"),
+  audience_rule: notificationAudienceRuleSchema,
+  status: z.enum(["draft", "scheduled", "sending", "sent", "cancelled"]).default("draft"),
+  scheduled_at: z.string().datetime().optional(),
+});
+
+const notificationCreateBodySchema = notificationBodyBaseSchema
   .refine((body) => (body.status === "scheduled" ? Boolean(body.scheduled_at) : true), {
     message: "scheduled_at is required when status is scheduled",
     path: ["scheduled_at"],
   });
 
-const notificationUpdateBodySchema = notificationCreateBodySchema
+const notificationUpdateBodySchema = notificationBodyBaseSchema
   .extend({
     scheduled_at: z.string().datetime().nullable().optional(),
   })
