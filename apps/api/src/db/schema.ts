@@ -516,6 +516,7 @@ export const staffGrants = pgTable(
       .references(() => users.id),
     authingUserId: text("authing_user_id").notNull(),
     grantSource: text("grant_source").notNull().default("authing"),
+    status: text("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [unique("staff_grants_activity_user_unique").on(table.activityId, table.userId)],
@@ -533,5 +534,6 @@ export const operatorGrants = pgTable("operator_grants", {
   scope: text("scope").notNull(),
   activityId: text("activity_id").references(() => activities.id),
   grantSource: text("grant_source").notNull().default("authing"),
+  status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

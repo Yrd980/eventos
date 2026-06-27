@@ -18,10 +18,14 @@ import {
   createOperatorNotification,
   createOperatorTenantResource,
   createOperatorSurvey,
+  disableOperatorActivityGrant,
+  disableOperatorStaffGrant,
   grantOperatorStaff,
+  grantOperatorActivity,
   createOperatorSession,
   listOperatorActivities,
   listOperatorActivityTemplates,
+  listOperatorActivityGrants,
   listOperatorNotifications,
   listOperatorTenantResources,
   publishOperatorActivity,
@@ -959,6 +963,73 @@ app.post("/operator/activities/:activityId/staff-grants", async (c) =>
       idempotencyKey: requireIdempotencyKey(c),
       request: { activityId, body },
       execute: () => grantOperatorStaff({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.post("/operator/staff-grants/:staffGrantId/disable", async (c) =>
+  withTransaction(async (repo) => {
+    const staffGrantId = c.req.param("staffGrantId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.staff_grant.disable",
+      resourceType: "staff_grant",
+      resourceId: staffGrantId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { staffGrantId },
+      execute: () => disableOperatorStaffGrant({ repo, actor, staffGrantId }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.get("/operator/activities/:activityId/operator-grants", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listOperatorActivityGrants({ repo, actor, activityId })));
+  }),
+);
+
+app.post("/operator/activities/:activityId/operator-grants", async (c) =>
+  withTransaction(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = await readJsonObject(c);
+    const result = await runCommand({
+      repo,
+      commandName: "operator.operator_grant.upsert",
+      resourceType: "operator_grant",
+      resourceId: activityId,
+      activityId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { activityId, body },
+      execute: () => grantOperatorActivity({ repo, actor, activityId, body }),
+    });
+    return c.json(success(result));
+  }),
+);
+
+app.post("/operator/operator-grants/:operatorGrantId/disable", async (c) =>
+  withTransaction(async (repo) => {
+    const operatorGrantId = c.req.param("operatorGrantId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const result = await runCommand({
+      repo,
+      commandName: "operator.operator_grant.disable",
+      resourceType: "operator_grant",
+      resourceId: operatorGrantId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { operatorGrantId },
+      execute: () => disableOperatorActivityGrant({ repo, actor, operatorGrantId }),
     });
     return c.json(success(result));
   }),

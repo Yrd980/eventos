@@ -589,6 +589,82 @@ export async function grantOperatorStaff(input: { repo: EventOsRepository; actor
   return { grant, user: staffUser };
 }
 
+export async function disableOperatorStaffGrant(input: { repo: EventOsRepository; actor: RequestActor; staffGrantId: string }) {
+  const existing = await input.repo.getStaffGrant(input.staffGrantId);
+  if (!existing) {
+    throw new DomainError("VALIDATION_FAILED", "Staff Grant was not found", { status: 404 });
+  }
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: existing.activity_id });
+  const grant = await input.repo.updateStaffGrantStatus({ id: existing.id, status: "disabled" });
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "staff_grant.disabled",
+    resourceType: "staff_grant",
+    resourceId: existing.id,
+    metadata: { staff_user_id: existing.user_id, staff_authing_user_id: existing.authing_user_id },
+  });
+  return grant;
+}
+
+export async function listOperatorActivityGrants(input: { repo: EventOsRepository; actor: RequestActor; activityId: string }) {
+  const { tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: input.activityId });
+  return input.repo.listOperatorGrants({ tenantId: tenant.id, activityId: input.activityId });
+}
+
+export async function grantOperatorActivity(input: { repo: EventOsRepository; actor: RequestActor; activityId: string; body: JsonRecord }) {
+  const { activity, tenant } = await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: input.activityId });
+  const authingUserId = asString(input.body.authing_user_id, "authing_user_id");
+  const operatorUser = await input.repo.upsertUser({
+    id: createId("usr"),
+    authingUserId,
+    displayName: asOptionalString(input.body.display_name),
+    avatarUrl: asOptionalString(input.body.avatar_url),
+  });
+  const grant = await input.repo.upsertOperatorGrant({
+    id: createId("opg"),
+    tenantId: tenant.id,
+    userId: operatorUser.id,
+    authingUserId,
+    scope: "activity",
+    activityId: activity.id,
+  });
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "operator_grant.upserted",
+    resourceType: "operator_grant",
+    resourceId: grant.id,
+    metadata: { operator_user_id: operatorUser.id, operator_authing_user_id: authingUserId, scope: "activity" },
+  });
+  return { grant, user: operatorUser };
+}
+
+export async function disableOperatorActivityGrant(input: { repo: EventOsRepository; actor: RequestActor; operatorGrantId: string }) {
+  const tenant = await requireTenantOperator({ repo: input.repo, actor: input.actor });
+  const existing = (await input.repo.listOperatorGrants({ tenantId: tenant.id })).find((grant) => grant.id === input.operatorGrantId);
+  if (!existing) {
+    throw new DomainError("VALIDATION_FAILED", "Operator Grant was not found", { status: 404 });
+  }
+  if (existing.scope !== "activity" || !existing.activity_id) {
+    throw new DomainError("VALIDATION_FAILED", "Only activity-scoped Operator Grants can be disabled through this endpoint", { status: 422 });
+  }
+  await requireOperatorActivity({ repo: input.repo, actor: input.actor, activityId: existing.activity_id });
+  const grant = await input.repo.updateOperatorGrantStatus({ id: existing.id, status: "disabled" });
+  await writeAuditEvent(input.repo, {
+    tenantId: tenant.id,
+    activityId: existing.activity_id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "tenant_operator" },
+    action: "operator_grant.disabled",
+    resourceType: "operator_grant",
+    resourceId: existing.id,
+    metadata: { operator_user_id: existing.user_id, operator_authing_user_id: existing.authing_user_id, scope: existing.scope },
+  });
+  return grant;
+}
+
 export async function upsertOperatorActivityOrganizer(input: {
   repo: EventOsRepository;
   actor: RequestActor;

@@ -312,6 +312,19 @@ export type StaffGrant = {
   user_id: Id;
   authing_user_id: string;
   grant_source: "authing";
+  status: "active" | "disabled";
+  created_at: ISODateTime;
+};
+
+export type OperatorGrant = {
+  id: Id;
+  tenant_id: Id;
+  user_id: Id;
+  authing_user_id: string;
+  scope: "tenant" | "activity";
+  activity_id?: Id;
+  grant_source: "authing";
+  status: "active" | "disabled";
   created_at: ISODateTime;
 };
 

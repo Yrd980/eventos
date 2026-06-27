@@ -13,6 +13,7 @@ import type {
   LiveEntry,
   MyAgendaItem,
   Notification,
+  OperatorGrant,
   Organizer,
   PageConfig,
   QRPass,
@@ -31,7 +32,7 @@ import type {
   Tenant,
   User,
 } from "@eventos/contracts";
-import { and, count, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { DbSession } from "../db";
 import {
   activities,
@@ -437,6 +438,21 @@ function mapStaffGrant(row: typeof staffGrants.$inferSelect): StaffGrant {
     user_id: row.userId,
     authing_user_id: row.authingUserId,
     grant_source: "authing",
+    status: row.status as StaffGrant["status"],
+    created_at: iso(row.createdAt),
+  };
+}
+
+function mapOperatorGrant(row: typeof operatorGrants.$inferSelect): OperatorGrant {
+  return {
+    id: row.id,
+    tenant_id: row.tenantId,
+    user_id: row.userId,
+    authing_user_id: row.authingUserId,
+    scope: row.scope as OperatorGrant["scope"],
+    activity_id: optional(row.activityId),
+    grant_source: "authing",
+    status: row.status as OperatorGrant["status"],
     created_at: iso(row.createdAt),
   };
 }
@@ -659,6 +675,7 @@ export function createRepository(db: DbSession) {
           and(
             eq(operatorGrants.tenantId, input.tenantId),
             eq(operatorGrants.userId, input.userId),
+            eq(operatorGrants.status, "active"),
             input.activityId
               ? or(eq(operatorGrants.scope, "tenant"), and(eq(operatorGrants.scope, "activity"), eq(operatorGrants.activityId, input.activityId)))
               : eq(operatorGrants.scope, "tenant"),
@@ -1715,8 +1732,69 @@ export function createRepository(db: DbSession) {
     },
 
     async hasStaffGrant(activityId: string, userId: string) {
-      const rows = await db.select({ id: staffGrants.id }).from(staffGrants).where(and(eq(staffGrants.activityId, activityId), eq(staffGrants.userId, userId))).limit(1);
+      const rows = await db
+        .select({ id: staffGrants.id })
+        .from(staffGrants)
+        .where(and(eq(staffGrants.activityId, activityId), eq(staffGrants.userId, userId), eq(staffGrants.status, "active")))
+        .limit(1);
       return rows.length > 0;
+    },
+
+    async listOperatorGrants(input: { tenantId: string; activityId?: string }) {
+      return (
+        await db
+          .select()
+          .from(operatorGrants)
+          .where(
+            input.activityId
+              ? and(eq(operatorGrants.tenantId, input.tenantId), eq(operatorGrants.activityId, input.activityId))
+              : eq(operatorGrants.tenantId, input.tenantId),
+          )
+          .orderBy(desc(operatorGrants.createdAt), operatorGrants.id)
+      ).map(mapOperatorGrant);
+    },
+
+    async upsertOperatorGrant(input: { id: string; tenantId: string; userId: string; authingUserId: string; scope: OperatorGrant["scope"]; activityId?: string }) {
+      const existing = first(
+        (
+          await db
+            .select()
+            .from(operatorGrants)
+            .where(
+              and(
+                eq(operatorGrants.tenantId, input.tenantId),
+                eq(operatorGrants.userId, input.userId),
+                eq(operatorGrants.scope, input.scope),
+                input.activityId ? eq(operatorGrants.activityId, input.activityId) : isNull(operatorGrants.activityId),
+              ),
+            )
+            .limit(1)
+        ).map(mapOperatorGrant),
+      );
+      if (existing) {
+        const rows = await db.update(operatorGrants).set({ status: "active", grantSource: "authing" }).where(eq(operatorGrants.id, existing.id)).returning();
+        return mapOperatorGrant(rows[0]);
+      }
+
+      const rows = await db
+        .insert(operatorGrants)
+        .values({
+          id: input.id,
+          tenantId: input.tenantId,
+          userId: input.userId,
+          authingUserId: input.authingUserId,
+          scope: input.scope,
+          activityId: input.activityId,
+          grantSource: "authing",
+          status: "active",
+        })
+        .returning();
+      return mapOperatorGrant(rows[0]);
+    },
+
+    async updateOperatorGrantStatus(input: { id: string; status: OperatorGrant["status"] }) {
+      const rows = await db.update(operatorGrants).set({ status: input.status }).where(eq(operatorGrants.id, input.id)).returning();
+      return first(rows.map(mapOperatorGrant));
     },
 
     async listStaffGrants(activityId: string) {
@@ -1729,6 +1807,10 @@ export function createRepository(db: DbSession) {
       ).map(mapStaffGrant);
     },
 
+    async getStaffGrant(staffGrantId: string) {
+      return first((await db.select().from(staffGrants).where(eq(staffGrants.id, staffGrantId)).limit(1)).map(mapStaffGrant));
+    },
+
     async upsertStaffGrant(input: { id: string; tenantId: string; activityId: string; userId: string; authingUserId: string }) {
       const rows = await db
         .insert(staffGrants)
@@ -1739,14 +1821,20 @@ export function createRepository(db: DbSession) {
           userId: input.userId,
           authingUserId: input.authingUserId,
           grantSource: "authing",
+          status: "active",
         })
         .onConflictDoUpdate({
           target: [staffGrants.activityId, staffGrants.userId],
-          set: { grantSource: sql`${staffGrants.grantSource}` },
+          set: { grantSource: "authing", status: "active" },
         })
         .returning();
 
       return mapStaffGrant(rows[0]);
+    },
+
+    async updateStaffGrantStatus(input: { id: string; status: StaffGrant["status"] }) {
+      const rows = await db.update(staffGrants).set({ status: input.status }).where(eq(staffGrants.id, input.id)).returning();
+      return first(rows.map(mapStaffGrant));
     },
 
     async createCheckin(input: {
