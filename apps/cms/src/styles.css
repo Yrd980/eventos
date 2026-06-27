@@ -369,16 +369,15 @@ body {
   min-height: 0;
   height: 100%;
   overflow: auto;
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  align-content: start;
-  gap: 1px;
-  padding: 1px;
-  background: var(--border);
+  display: flex;
+  align-content: flex-start;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  background: var(--surface);
 }
 
 .management-grid--empty {
-  grid-template-columns: minmax(23rem, 42rem) minmax(18rem, 1fr);
+  align-items: stretch;
 }
 
 .panel {
@@ -386,9 +385,11 @@ body {
   align-content: start;
   gap: 0.75rem;
   min-width: 0;
-  grid-column: span 6;
+  flex: 1 1 34rem;
   padding: 1.1rem 1.2rem;
   background: var(--surface);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .management-grid--overview .panel--overview,
@@ -405,7 +406,7 @@ body {
 }
 
 .panel--intro {
-  grid-column: span 6;
+  flex: 1 1 34rem;
 }
 
 .panel--split {
@@ -497,16 +498,17 @@ body {
 }
 
 .span-2 {
-  grid-column: span 12;
+  flex-basis: 100%;
 }
 
 .empty-state {
   display: grid;
   align-content: start;
   gap: 0.7rem;
-  grid-column: span 6;
+  flex: 1 1 34rem;
   padding: 1.7rem 1.9rem;
   background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 
 .empty-state__title {
@@ -568,7 +570,7 @@ button:focus-visible,
   .span-2,
   .panel--intro,
   .empty-state {
-    grid-column: span 12;
+    flex-basis: 100%;
   }
 }
 
