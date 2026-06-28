@@ -50,18 +50,23 @@ import {
   upsertOperatorPageConfig,
 } from "./services/operator";
 import {
+  addBoothToMyBooths,
   addSessionToMyAgenda,
+  checkinBooth,
   checkinParticipant,
+  listBoothCheckinsForActor,
   getQRPassForActor,
   getCurrentRegistrationForm,
   getRegistrationForActor,
   getVisibleSurvey,
+  listMyBoothsForActor,
   listMyAgendaForActor,
   listLiveEntriesForActivity,
   listNotificationsForParticipant,
   listSurveyQuestionsForParticipant,
   listSurveysForActivity,
   registerForActivity,
+  removeBoothFromMyBooths,
   removeSessionFromMyAgenda,
   submitRegistrationForm,
   submitSurveyResponse,
@@ -103,6 +108,10 @@ const answersBodySchema = z.object({
   answers: z.record(z.string(), z.unknown()),
 });
 
+const boothCheckinBodySchema = z.object({
+  device_metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
 const activityOrganizerBodySchema = z.object({
   organizer_id: z.string().min(1),
   sort_order: z.number().int().min(0).default(0),
@@ -110,7 +119,7 @@ const activityOrganizerBodySchema = z.object({
 
 const activityTemplateConfigSchema = z
   .record(z.string(), z.unknown())
-  .refine((config) => !["sessions", "speakers", "organizers", "sponsors", "expo_booths", "live_entries", "surveys", "registration_forms", "notifications"].some((key) => key in config), {
+  .refine((config) => !["sessions", "speakers", "organizers", "sponsors", "expo_booths", "booth_collections", "booth_checkins", "live_entries", "surveys", "registration_forms", "notifications"].some((key) => key in config), {
     message: "Activity Template config must not contain business facts",
   });
 
@@ -1309,6 +1318,20 @@ app.get("/activities/:activityId/expo-booths", async (c) =>
   }),
 );
 
+app.get("/activities/:activityId/my-booths", async (c) =>
+  withRepo(async (repo) => {
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listMyBoothsForActor({ repo, activityId: c.req.param("activityId"), actor })));
+  }),
+);
+
+app.get("/activities/:activityId/booth-checkins", async (c) =>
+  withRepo(async (repo) => {
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await listBoothCheckinsForActor({ repo, activityId: c.req.param("activityId"), actor })));
+  }),
+);
+
 app.get("/activities/:activityId/live-entries", async (c) =>
   withRepo(async (repo) => {
     const activityId = c.req.param("activityId");
@@ -1490,6 +1513,67 @@ app.get("/activities/:activityId/my-agenda", async (c) =>
   withRepo(async (repo) => {
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
     return c.json(success(await listMyAgendaForActor({ repo, activityId: c.req.param("activityId"), actor })));
+  }),
+);
+
+app.post("/expo-booths/:expoBoothId/my-booths", async (c) =>
+  withTransaction(async (repo) => {
+    const expoBoothId = c.req.param("expoBoothId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const result = await runCommand({
+      repo,
+      commandName: "booth_collection.add",
+      resourceType: "booth_collection",
+      resourceId: expoBoothId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { expoBoothId },
+      execute: () => addBoothToMyBooths({ repo, expoBoothId, actor }),
+    });
+
+    return c.json(success(result));
+  }),
+);
+
+app.delete("/expo-booths/:expoBoothId/my-booths", async (c) =>
+  withTransaction(async (repo) => {
+    const expoBoothId = c.req.param("expoBoothId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const result = await runCommand({
+      repo,
+      commandName: "booth_collection.remove",
+      resourceType: "booth_collection",
+      resourceId: expoBoothId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { expoBoothId },
+      execute: () => removeBoothFromMyBooths({ repo, expoBoothId, actor }),
+    });
+
+    return c.json(success(result));
+  }),
+);
+
+app.post("/expo-booths/:expoBoothId/checkin", async (c) =>
+  withTransaction(async (repo) => {
+    const expoBoothId = c.req.param("expoBoothId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    const body = parseJsonBody(boothCheckinBodySchema, await readJsonObject(c).catch(() => ({})));
+    const result = await runCommand({
+      repo,
+      commandName: "booth_checkin.create",
+      resourceType: "booth_checkin",
+      resourceId: expoBoothId,
+      actorUserId: actor.user.id,
+      actorAuthingUserId: actor.principal.authing_user_id,
+      idempotencyKey: requireIdempotencyKey(c),
+      request: { expoBoothId, body },
+      execute: () => checkinBooth({ repo, expoBoothId, actor, deviceMetadata: body.device_metadata }),
+    });
+
+    return c.json(success(result));
   }),
 );
 

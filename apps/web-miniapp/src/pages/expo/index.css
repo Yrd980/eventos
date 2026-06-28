@@ -25,6 +25,32 @@
   font-size: 24rpx;
 }
 
+.filter-strip {
+  display: flex;
+  gap: 10rpx;
+  margin-top: 14rpx;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.filter-chip {
+  flex-shrink: 0;
+  max-width: 360rpx;
+  padding: 10rpx 14rpx;
+  border-radius: 999rpx;
+  background: rgba(15, 23, 42, 0.08);
+  color: rgba(15, 23, 42, 0.68);
+  font-size: 21rpx;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-chip--active {
+  background: #111827;
+  color: #fff;
+}
+
 .expo-map__body {
   display: flex;
   flex-direction: column;
@@ -83,6 +109,7 @@
 
 .expo-focus__cta {
   display: block;
+  flex: 1;
   margin-top: 12rpx;
   padding: 12rpx 16rpx;
   border-radius: 999rpx;
@@ -91,6 +118,16 @@
   font-size: 22rpx;
   font-weight: 800;
   text-align: center;
+}
+
+.expo-actions {
+  display: flex;
+  gap: 12rpx;
+}
+
+.expo-focus__cta--muted {
+  background: rgba(15, 23, 42, 0.08);
+  color: rgba(15, 23, 42, 0.62);
 }
 
 .list {
@@ -137,4 +174,18 @@
   color: rgba(15, 23, 42, 0.58);
   font-size: 22rpx;
   line-height: 1.45;
+}
+
+.list__state {
+  color: #4053e6;
+  font-size: 20rpx;
+  font-weight: 800;
+}
+
+.list__empty {
+  padding: 28rpx 16rpx;
+  color: rgba(15, 23, 42, 0.58);
+  font-size: 24rpx;
+  font-weight: 800;
+  text-align: center;
 }

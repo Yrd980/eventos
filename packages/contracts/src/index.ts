@@ -97,6 +97,7 @@ export type DomainErrorCode =
   | "SESSION_NOT_CHECKINABLE"
   | "SESSION_ACTIVITY_MISMATCH"
   | "EXPO_BOOTH_NOT_FOUND"
+  | "EXPO_BOOTH_ACTIVITY_MISMATCH"
   | "LIVE_ENTRY_NOT_FOUND"
   | "REGISTRATION_FORM_NOT_FOUND"
   | "SURVEY_NOT_FOUND"
@@ -113,6 +114,8 @@ export type RegistrationStatus = "pending" | "confirmed" | "cancelled";
 export type QRPassStatus = "active" | "invalidated" | "expired";
 export type CheckinSource = "staff" | "self" | "import";
 export type MyAgendaSource = "manual" | "assistant" | "import" | "operator";
+export type BoothCollectionSource = "manual" | "assistant" | "import" | "operator";
+export type BoothCheckinSource = "staff" | "self" | "import";
 export type AccessPolicy = "public" | "confirmed_registration";
 export type PublicationStatus = "published" | "superseded";
 export type ExpoBoothStatus = "visible" | "hidden";
@@ -333,6 +336,28 @@ export type Checkin = {
   created_at: ISODateTime;
 };
 
+export type BoothCollection = {
+  id: Id;
+  activity_id: Id;
+  participant_id: Id;
+  expo_booth_id: Id;
+  source: BoothCollectionSource;
+  source_ref?: string;
+  created_at: ISODateTime;
+};
+
+export type BoothCheckin = {
+  id: Id;
+  activity_id: Id;
+  participant_id: Id;
+  expo_booth_id: Id;
+  qr_pass_id?: Id;
+  source: BoothCheckinSource;
+  staff_user_id?: Id;
+  device_metadata?: Record<string, unknown>;
+  created_at: ISODateTime;
+};
+
 export type StaffCheckinCommand = CommandMeta & {
   session_id: Id;
   qr_token: string;
@@ -539,6 +564,8 @@ export type BusinessResourceType =
   | "my_agenda_item"
   | "checkin"
   | "expo_booth"
+  | "booth_collection"
+  | "booth_checkin"
   | "live_entry"
   | "survey"
   | "page_config"

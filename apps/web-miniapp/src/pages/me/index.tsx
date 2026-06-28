@@ -1,11 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import type { MyAgendaItem, Notification, QRPass, Registration, Session } from '@eventos/contracts'
-import { loadMyAgenda, loadNotifications, loadQRPass, loadRegistration, loadSessions, removeMyAgenda, resolveActivityId, type QRPassView } from '../../utils/api'
+import type { BoothCollection, ExpoBooth, MyAgendaItem, Notification, QRPass, Registration, Session } from '@eventos/contracts'
+import {
+  loadExpoBooths,
+  loadMyAgenda,
+  loadMyBooths,
+  loadNotifications,
+  loadQRPass,
+  loadRegistration,
+  loadSessions,
+  removeMyBooth,
+  removeMyAgenda,
+  resolveActivityId,
+  type QRPassView,
+} from '../../utils/api'
 import './index.css'
 
-const tabs = ['Overview', 'QR Pass', 'My Agenda', 'Registration', 'Messages']
+const tabs = ['Overview', 'QR Pass', 'My Agenda', 'My Booths', 'Registration', 'Messages']
 const MAX_VISIBLE_ITEMS = 15
 
 function timeRange(session: Session) {
@@ -17,31 +29,38 @@ export default function MePage() {
   const [registration, setRegistration] = useState<Registration>()
   const [qrPass, setQRPass] = useState<QRPassView>()
   const [agenda, setAgenda] = useState<MyAgendaItem[]>([])
+  const [myBooths, setMyBooths] = useState<BoothCollection[]>([])
+  const [expoBooths, setExpoBooths] = useState<ExpoBooth[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [status, setStatus] = useState('加载参与信息中')
   const sessionById = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
+  const boothById = useMemo(() => new Map(expoBooths.map((booth) => [booth.id, booth])), [expoBooths])
   const visibleAgenda = agenda.slice(0, MAX_VISIBLE_ITEMS)
+  const visibleMyBooths = myBooths.slice(0, MAX_VISIBLE_ITEMS)
   const visibleNotifications = notifications.slice(0, MAX_VISIBLE_ITEMS)
 
   async function load() {
-    const activityId = await resolveActivityId()
-    if (!activityId) {
+    const resolvedActivityId = await resolveActivityId()
+    if (!resolvedActivityId) {
       setStatus('请先在首页选择 Activity')
       return
     }
     try {
-      const [sessionRows, agendaRows, messageRows] = await Promise.all([
-        loadSessions(activityId).catch(() => []),
-        loadMyAgenda(activityId).catch(() => []),
-        loadNotifications(activityId).catch(() => []),
+      const [sessionRows, agendaRows, boothRows, myBoothRows] = await Promise.all([
+        loadSessions(resolvedActivityId).catch(() => []),
+        loadMyAgenda(resolvedActivityId).catch(() => []),
+        loadExpoBooths(resolvedActivityId).catch(() => []),
+        loadMyBooths(resolvedActivityId).catch(() => []),
       ])
       setSessions(sessionRows)
       setAgenda(agendaRows)
-      setNotifications(messageRows)
+      setExpoBooths(boothRows)
+      setMyBooths(myBoothRows)
       setStatus('参与信息已加载')
-      void loadRegistration(activityId).then(setRegistration).catch(() => setRegistration(undefined))
-      void loadQRPass(activityId).then(setQRPass).catch(() => setQRPass(undefined))
+      void loadNotifications(resolvedActivityId).then(setNotifications).catch(() => setNotifications([]))
+      void loadRegistration(resolvedActivityId).then(setRegistration).catch(() => setRegistration(undefined))
+      void loadQRPass(resolvedActivityId).then(setQRPass).catch(() => setQRPass(undefined))
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error))
     }
@@ -51,10 +70,23 @@ export default function MePage() {
     void load()
   }, [])
 
+  Taro.useDidShow(() => {
+    void load()
+  })
+
   async function remove(sessionId: string) {
     try {
       await removeMyAgenda(sessionId)
       setAgenda((current) => current.filter((item) => item.session_id !== sessionId))
+    } catch (error) {
+      Taro.showToast({ title: error instanceof Error ? error.message : String(error), icon: 'none' })
+    }
+  }
+
+  async function removeBooth(expoBoothId: string) {
+    try {
+      await removeMyBooth(expoBoothId)
+      setMyBooths((current) => current.filter((item) => item.expo_booth_id !== expoBoothId))
     } catch (error) {
       Taro.showToast({ title: error instanceof Error ? error.message : String(error), icon: 'none' })
     }
@@ -72,7 +104,7 @@ export default function MePage() {
       <View className='profile-hero'>
         <View className='profile-hero__left'>
           <Text className='profile-hero__label'>{status}</Text>
-          <Text className='profile-hero__value'>{agenda.length} 场</Text>
+          <Text className='profile-hero__value'>{agenda.length} / {myBooths.length}</Text>
           <Text className='profile-hero__link'>Registration: {registration?.status ?? 'not loaded'}</Text>
         </View>
         <View className='profile-hero__cta' onClick={() => Taro.switchTab({ url: '/pages/schedule/index' })}>
@@ -104,6 +136,7 @@ export default function MePage() {
             <Text className='qr-card__bodyText'>{registration ? `Registration ${registration.status}` : 'No Registration'}</Text>
             <View className='qr-card__bodyLine' />
             <Text className='qr-card__bodyHint'>{qrPass ? `QR Pass ${qrPass.status}` : 'QR Pass requires confirmed Registration'}</Text>
+            <Text className='qr-card__bodyHint'>My Agenda {agenda.length} · My Booths {myBooths.length}</Text>
           </View>
         )}
 
@@ -156,13 +189,36 @@ export default function MePage() {
 
         {activeTab === 3 && (
           <View className='qr-card__body'>
+            {myBooths.length === 0 ? (
+              <View className='qr-card__bodyEmpty'>
+                <Text className='qr-card__bodyText'>还没有加入 Expo Booth</Text>
+                <View className='qr-card__bodyLine' />
+                <Text className='qr-card__bodyHint'>去 Expo 添加 My Booths</Text>
+              </View>
+            ) : (
+              visibleMyBooths.map((item) => {
+                const booth = boothById.get(item.expo_booth_id)
+                return (
+                  <View key={item.id} className='message-row'>
+                    <Text className='message-row__title'>{booth?.name ?? item.expo_booth_id}</Text>
+                    <Text className='message-row__meta'>{booth?.location ?? booth?.category ?? 'Expo Booth'}</Text>
+                    <Text className='plan-slot__remove' onClick={() => removeBooth(item.expo_booth_id)}>移除</Text>
+                  </View>
+                )
+              })
+            )}
+          </View>
+        )}
+
+        {activeTab === 4 && (
+          <View className='qr-card__body'>
             <Text className='qr-card__bodyText'>{registration?.status ?? 'No Registration'}</Text>
             <View className='qr-card__bodyLine' />
             <Text className='qr-card__bodyHint'>{registration?.id ?? 'Register from Home first'}</Text>
           </View>
         )}
 
-        {activeTab === 4 && (
+        {activeTab === 5 && (
           <View className='qr-card__body'>
             {notifications.length === 0 ? (
               <Text className='qr-card__bodyText'>No messages</Text>

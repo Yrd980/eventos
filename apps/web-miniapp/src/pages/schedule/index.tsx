@@ -10,28 +10,53 @@ function timeRange(session: Session) {
 }
 
 const MAX_VISIBLE_SESSIONS = 20
+const ALL_DAYS = 'all'
+const VIEW_ALL = 'all'
+const VIEW_MY = 'my'
+
+function dayKey(session: Session) {
+  return session.start_time.slice(0, 10)
+}
+
+function dayLabel(value: string) {
+  return value.slice(5).replace('-', '.')
+}
 
 export default function SchedulePage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [agenda, setAgenda] = useState<MyAgendaItem[]>([])
   const [selected, setSelected] = useState<string>()
+  const [activeDay, setActiveDay] = useState(ALL_DAYS)
+  const [activeView, setActiveView] = useState<typeof VIEW_ALL | typeof VIEW_MY>(VIEW_ALL)
   const [status, setStatus] = useState('加载日程中')
-  const selectedSession = sessions.find((item) => item.id === selected) ?? sessions[0]
-  const visibleSessions = sessions.slice(0, MAX_VISIBLE_SESSIONS)
+  const days = useMemo(() => Array.from(new Set(sessions.map(dayKey))), [sessions])
   const agendaSet = useMemo(() => new Set(agenda.map((item) => item.session_id)), [agenda])
+  const filteredSessions = useMemo(() => {
+    const byView = activeView === VIEW_MY ? sessions.filter((item) => agendaSet.has(item.id)) : sessions
+    return activeDay === ALL_DAYS ? byView : byView.filter((item) => dayKey(item) === activeDay)
+  }, [activeDay, activeView, agendaSet, sessions])
+  const selectedSession = filteredSessions.find((item) => item.id === selected) ?? filteredSessions[0]
+  const visibleSessions = filteredSessions.slice(0, MAX_VISIBLE_SESSIONS)
 
   async function load() {
-    const activityId = await resolveActivityId()
-    if (!activityId) {
+    const resolvedActivityId = await resolveActivityId()
+    if (!resolvedActivityId) {
       setStatus('请先在首页选择 Activity')
       return
     }
     try {
-      const rows = await loadSessions(activityId)
+      const [rows, agendaRows] = await Promise.all([
+        loadSessions(resolvedActivityId),
+        loadMyAgenda(resolvedActivityId).catch(() => []),
+      ])
       setSessions(rows)
-      setSelected(rows[0]?.id)
+      setAgenda(agendaRows)
+      const nextDays = Array.from(new Set(rows.map(dayKey)))
+      const nextActiveDay = activeDay === ALL_DAYS || nextDays.includes(activeDay) ? activeDay : ALL_DAYS
+      setActiveDay(nextActiveDay)
+      const nextRows = nextActiveDay === ALL_DAYS ? rows : rows.filter((item) => dayKey(item) === nextActiveDay)
+      setSelected((current) => (current && nextRows.some((item) => item.id === current) ? current : nextRows[0]?.id))
       setStatus(rows.length ? '日程已加载' : '暂无 Session')
-      void loadMyAgenda(activityId).then(setAgenda).catch(() => setAgenda([]))
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error))
     }
@@ -40,6 +65,10 @@ export default function SchedulePage() {
   useEffect(() => {
     void load()
   }, [])
+
+  Taro.useDidShow(() => {
+    void load()
+  })
 
   async function add(session: Session) {
     try {
@@ -62,13 +91,32 @@ export default function SchedulePage() {
       </View>
 
       <View className='seg'>
-        <Text className='seg__item seg__item--active'>全部日程</Text>
-        <Text className='seg__item' onClick={() => Taro.switchTab({ url: '/pages/me/index' })}>My Agenda</Text>
+        <Text className={`seg__item${activeView === VIEW_ALL ? ' seg__item--active' : ''}`} onClick={() => setActiveView(VIEW_ALL)}>全部日程</Text>
+        <Text className={`seg__item${activeView === VIEW_MY ? ' seg__item--active' : ''}`} onClick={() => setActiveView(VIEW_MY)}>我的日程</Text>
       </View>
+
+      {days.length > 1 && (
+        <View className='filter-strip'>
+          <Text className={`filter-chip${activeDay === ALL_DAYS ? ' filter-chip--active' : ''}`} onClick={() => setActiveDay(ALL_DAYS)}>全部</Text>
+          {days.map((item) => (
+            <Text
+              key={item}
+              className={`filter-chip${item === activeDay ? ' filter-chip--active' : ''}`}
+              onClick={() => {
+                setActiveDay(item)
+                const first = sessions.find((session) => dayKey(session) === item)
+                setSelected(first?.id)
+              }}
+            >
+              {dayLabel(item)}
+            </Text>
+          ))}
+        </View>
+      )}
 
       <View className='session-banner'>
         <Text className='session-banner__title'>{status}</Text>
-        <Text className='session-banner__sub'>从 API/published Activity 读取 Sessions，加入 My Agenda 会写回 Postgres。</Text>
+        <Text className='session-banner__sub'>{filteredSessions.length} 场 Session · {agenda.length} 场已加入 My Agenda</Text>
       </View>
 
       {selectedSession && (
@@ -115,6 +163,11 @@ export default function SchedulePage() {
             </Text>
           </View>
         ))}
+        {visibleSessions.length === 0 && (
+          <View className='timeline__empty'>
+            <Text>当前筛选下暂无 Session</Text>
+          </View>
+        )}
       </View>
     </View>
   )

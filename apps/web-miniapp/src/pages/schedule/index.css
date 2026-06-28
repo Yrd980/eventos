@@ -62,6 +62,32 @@
   color: #fff;
 }
 
+.filter-strip {
+  display: flex;
+  gap: 10rpx;
+  margin-top: 14rpx;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.filter-chip {
+  flex-shrink: 0;
+  max-width: 360rpx;
+  padding: 10rpx 14rpx;
+  border-radius: 999rpx;
+  background: rgba(15, 23, 42, 0.08);
+  color: rgba(15, 23, 42, 0.68);
+  font-size: 21rpx;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-chip--active {
+  background: #111827;
+  color: #fff;
+}
+
 .session-banner {
   margin-top: 18rpx;
   padding: 16rpx 18rpx;
@@ -221,4 +247,14 @@
 .timeline__action--added {
   background: rgba(15, 23, 42, 0.08);
   color: rgba(15, 23, 42, 0.5);
+}
+
+.timeline__empty {
+  padding: 28rpx 16rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.78);
+  color: rgba(15, 23, 42, 0.58);
+  font-size: 24rpx;
+  font-weight: 800;
+  text-align: center;
 }

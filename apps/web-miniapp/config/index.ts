@@ -16,6 +16,9 @@ export default {
   },
   framework: 'react',
   platform: 'weapp',
+  defineConstants: {
+    'process.env.EVENTOS_DEV_AUTH_TOKEN': JSON.stringify(process.env.EVENTOS_DEV_AUTH_TOKEN ?? ''),
+  },
   cache: {
     enable: true,
   },

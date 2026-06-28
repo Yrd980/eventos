@@ -4,6 +4,8 @@ import type {
   ActivityPublication,
   ApiError,
   ApiSuccess,
+  BoothCheckin,
+  BoothCollection,
   DomainErrorCode,
   ExpoBooth,
   LiveEntry,
@@ -27,6 +29,7 @@ const API_BASE_KEY = 'eventos_api_base_url'
 const AUTHING_TOKEN_KEY = 'eventos_authing_token'
 const ACTIVITY_ID_KEY = 'eventos_activity_id'
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000'
+const DEFAULT_AUTHING_TOKEN = process.env.EVENTOS_DEV_AUTH_TOKEN ?? ''
 const READ_CACHE_TTL_MS = 15000
 
 const readCache = new Map<string, { expiresAt: number; value: unknown }>()
@@ -62,9 +65,9 @@ export function setApiBaseUrl(value: string) {
 
 export function getAuthingToken() {
   try {
-    return (Taro.getStorageSync(AUTHING_TOKEN_KEY) as string | undefined) || ''
+    return (Taro.getStorageSync(AUTHING_TOKEN_KEY) as string | undefined) || DEFAULT_AUTHING_TOKEN
   } catch {
-    return ''
+    return DEFAULT_AUTHING_TOKEN
   }
 }
 
@@ -87,7 +90,9 @@ export function getStoredActivityId() {
 
 export function setStoredActivityId(value: string) {
   try {
-    Taro.setStorageSync(ACTIVITY_ID_KEY, value)
+    const nextValue = value.trim()
+    if (nextValue) Taro.setStorageSync(ACTIVITY_ID_KEY, nextValue)
+    else Taro.removeStorageSync(ACTIVITY_ID_KEY)
     clearReadCache()
   } catch {
     // Storage can be unavailable during early mini program runtime init.
@@ -172,7 +177,14 @@ export async function loadActivities() {
 
 export async function resolveActivityId() {
   const storedId = getStoredActivityId()
-  if (storedId) return storedId
+  if (storedId) {
+    try {
+      await loadActivity(storedId)
+      return storedId
+    } catch {
+      setStoredActivityId('')
+    }
+  }
 
   const activities = await loadActivities()
   const activityId = activities[0]?.id
@@ -201,10 +213,12 @@ export async function loadNotifications(activityId: string) {
 }
 
 export async function register(activityId: string) {
-  return apiRequest<{ registration: Registration; qr_pass: QRPassView }>(`/activities/${activityId}/registration`, {
+  const result = await apiRequest<{ registration: Registration; qr_pass: QRPassView }>(`/activities/${activityId}/registration`, {
     method: 'POST',
     idempotency: true,
   })
+  clearReadCache()
+  return result
 }
 
 export async function loadRegistrationForm(activityId: string) {
@@ -212,11 +226,13 @@ export async function loadRegistrationForm(activityId: string) {
 }
 
 export async function submitRegistrationForm(activityId: string, answers: Record<string, unknown>) {
-  return apiRequest<{ form: RegistrationForm; submission: RegistrationSubmission }>(`/activities/${activityId}/registration-submissions`, {
+  const result = await apiRequest<{ form: RegistrationForm; submission: RegistrationSubmission }>(`/activities/${activityId}/registration-submissions`, {
     method: 'POST',
     idempotency: true,
     body: { answers },
   })
+  clearReadCache()
+  return result
 }
 
 export async function loadRegistration(activityId: string) {
@@ -228,11 +244,15 @@ export async function loadQRPass(activityId: string) {
 }
 
 export async function addMyAgenda(sessionId: string) {
-  return apiRequest<MyAgendaItem>(`/sessions/${sessionId}/my-agenda`, { method: 'POST', idempotency: true })
+  const result = await apiRequest<MyAgendaItem>(`/sessions/${sessionId}/my-agenda`, { method: 'POST', idempotency: true })
+  clearReadCache()
+  return result
 }
 
 export async function removeMyAgenda(sessionId: string) {
-  return apiRequest<{ removed: boolean; item?: MyAgendaItem }>(`/sessions/${sessionId}/my-agenda`, { method: 'DELETE', idempotency: true })
+  const result = await apiRequest<{ removed: boolean; item?: MyAgendaItem }>(`/sessions/${sessionId}/my-agenda`, { method: 'DELETE', idempotency: true })
+  clearReadCache()
+  return result
 }
 
 export async function loadMyAgenda(activityId: string) {
@@ -241,6 +261,36 @@ export async function loadMyAgenda(activityId: string) {
 
 export async function loadExpoBooths(activityId: string) {
   return cachedRead<ExpoBooth[]>(`/activities/${activityId}/expo-booths`, { auth: false })
+}
+
+export async function loadMyBooths(activityId: string) {
+  return cachedRead<BoothCollection[]>(`/activities/${activityId}/my-booths`)
+}
+
+export async function addMyBooth(expoBoothId: string) {
+  const result = await apiRequest<BoothCollection>(`/expo-booths/${expoBoothId}/my-booths`, { method: 'POST', idempotency: true })
+  clearReadCache()
+  return result
+}
+
+export async function removeMyBooth(expoBoothId: string) {
+  const result = await apiRequest<{ removed: boolean; item?: BoothCollection }>(`/expo-booths/${expoBoothId}/my-booths`, { method: 'DELETE', idempotency: true })
+  clearReadCache()
+  return result
+}
+
+export async function loadBoothCheckins(activityId: string) {
+  return cachedRead<BoothCheckin[]>(`/activities/${activityId}/booth-checkins`)
+}
+
+export async function checkinBooth(expoBoothId: string) {
+  const result = await apiRequest<BoothCheckin>(`/expo-booths/${expoBoothId}/checkin`, {
+    method: 'POST',
+    idempotency: true,
+    body: { device_metadata: { entry: 'miniapp_expo' } },
+  })
+  clearReadCache()
+  return result
 }
 
 export async function loadSurveys(activityId: string) {
@@ -252,15 +302,17 @@ export async function loadSurveyQuestions(surveyId: string) {
 }
 
 export async function submitSurveyResponse(surveyId: string, answers: Record<string, unknown>) {
-  return apiRequest<{ response: SurveyResponse; answers: SurveyAnswer[] }>(`/surveys/${surveyId}/responses`, {
+  const result = await apiRequest<{ response: SurveyResponse; answers: SurveyAnswer[] }>(`/surveys/${surveyId}/responses`, {
     method: 'POST',
     idempotency: true,
     body: { answers },
   })
+  clearReadCache()
+  return result
 }
 
 export async function checkinSession(input: { sessionId: string; qrToken: string; deviceMetadata?: Record<string, unknown> }) {
-  return apiRequest<StaffCheckinResult>('/checkin', {
+  const result = await apiRequest<StaffCheckinResult>('/checkin', {
     method: 'POST',
     idempotency: true,
     body: {
@@ -269,6 +321,8 @@ export async function checkinSession(input: { sessionId: string; qrToken: string
       device_metadata: input.deviceMetadata,
     },
   })
+  clearReadCache()
+  return result
 }
 
 export async function loadCheckinCount(sessionId: string) {

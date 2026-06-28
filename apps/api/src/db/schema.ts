@@ -347,6 +347,48 @@ export const expoBooths = pgTable("expo_booths", {
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
+export const boothCollections = pgTable(
+  "booth_collections",
+  {
+    id: text("id").primaryKey(),
+    activityId: text("activity_id")
+      .notNull()
+      .references(() => activities.id),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id),
+    expoBoothId: text("expo_booth_id")
+      .notNull()
+      .references(() => expoBooths.id),
+    source: text("source").notNull(),
+    sourceRef: text("source_ref"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("booth_collections_activity_participant_booth_unique").on(table.activityId, table.participantId, table.expoBoothId)],
+);
+
+export const boothCheckins = pgTable(
+  "booth_checkins",
+  {
+    id: text("id").primaryKey(),
+    activityId: text("activity_id")
+      .notNull()
+      .references(() => activities.id),
+    participantId: text("participant_id")
+      .notNull()
+      .references(() => participants.id),
+    expoBoothId: text("expo_booth_id")
+      .notNull()
+      .references(() => expoBooths.id),
+    qrPassId: text("qr_pass_id").references(() => qrPasses.id),
+    source: text("source").notNull(),
+    staffUserId: text("staff_user_id").references(() => users.id),
+    deviceMetadata: jsonb("device_metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [unique("booth_checkins_activity_participant_booth_unique").on(table.activityId, table.participantId, table.expoBoothId)],
+);
+
 export const liveEntries = pgTable("live_entries", {
   id: text("id").primaryKey(),
   activityId: text("activity_id")

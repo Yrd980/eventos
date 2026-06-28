@@ -36,6 +36,7 @@ export function statusForCode(code: DomainErrorCode): number {
     case "ACTIVITY_NOT_FOUND":
     case "EXPO_BOOTH_NOT_FOUND":
     case "SESSION_NOT_FOUND":
+    case "REGISTRATION_REQUIRED":
       return 404;
     case "IDEMPOTENCY_CONFLICT":
       return 409;

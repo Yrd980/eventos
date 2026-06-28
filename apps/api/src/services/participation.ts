@@ -1,4 +1,4 @@
-import type { LiveEntry, MyAgendaItem, Notification, RegistrationForm, StaffCheckinResult, Survey, SurveyQuestion } from "@eventos/contracts";
+import type { BoothCollection, LiveEntry, MyAgendaItem, Notification, RegistrationForm, StaffCheckinResult, Survey, SurveyQuestion } from "@eventos/contracts";
 import type { RequestActor } from "../auth/authing";
 import { DomainError } from "../http/envelope";
 import { getMutableParticipantActivity, getPublishedSnapshot, getVisibleActivity } from "./activity";
@@ -579,6 +579,107 @@ export async function listMyAgendaForActor(input: { repo: EventOsRepository; act
   await getVisibleActivity(input.repo, input.activityId);
   const { participant } = await requireConfirmedParticipant(input);
   return input.repo.listMyAgenda(input.activityId, participant.id);
+}
+
+async function requireVisibleExpoBooth(input: { repo: EventOsRepository; expoBoothId: string }) {
+  const booth = await input.repo.getExpoBooth(input.expoBoothId);
+  if (!booth) {
+    throw new DomainError("EXPO_BOOTH_NOT_FOUND", "Expo Booth was not found", { status: 404 });
+  }
+  if (booth.status !== "visible") {
+    throw new DomainError("EXPO_BOOTH_NOT_FOUND", "Expo Booth was not found", { status: 404 });
+  }
+  return booth;
+}
+
+export async function addBoothToMyBooths(input: {
+  repo: EventOsRepository;
+  expoBoothId: string;
+  actor: RequestActor;
+  source?: BoothCollection["source"];
+}) {
+  const booth = await requireVisibleExpoBooth({ repo: input.repo, expoBoothId: input.expoBoothId });
+  const activity = await getMutableParticipantActivity(input.repo, booth.activity_id);
+  const { participant } = await requireConfirmedParticipant({ repo: input.repo, activityId: booth.activity_id, actor: input.actor });
+
+  const item = await input.repo.addBoothCollection({
+    id: createId("bcl"),
+    activityId: booth.activity_id,
+    participantId: participant.id,
+    expoBoothId: booth.id,
+    source: input.source ?? "manual",
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: activity.tenant_id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "participant" },
+    action: "booth_collection.added",
+    resourceType: "booth_collection",
+    resourceId: item.id,
+    metadata: { expo_booth_id: booth.id },
+  });
+
+  return item;
+}
+
+export async function removeBoothFromMyBooths(input: { repo: EventOsRepository; expoBoothId: string; actor: RequestActor }) {
+  const booth = await requireVisibleExpoBooth({ repo: input.repo, expoBoothId: input.expoBoothId });
+  const activity = await getMutableParticipantActivity(input.repo, booth.activity_id);
+  const { participant } = await requireConfirmedParticipant({ repo: input.repo, activityId: booth.activity_id, actor: input.actor });
+  const item = await input.repo.removeBoothCollection(booth.activity_id, participant.id, booth.id);
+
+  await writeAuditEvent(input.repo, {
+    tenantId: activity.tenant_id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "participant" },
+    action: "booth_collection.removed",
+    resourceType: "booth_collection",
+    resourceId: item?.id,
+    metadata: { expo_booth_id: booth.id },
+  });
+
+  return { removed: Boolean(item), item };
+}
+
+export async function listMyBoothsForActor(input: { repo: EventOsRepository; activityId: string; actor: RequestActor }) {
+  await getVisibleActivity(input.repo, input.activityId);
+  const { participant } = await requireConfirmedParticipant(input);
+  return input.repo.listBoothCollections(input.activityId, participant.id);
+}
+
+export async function checkinBooth(input: { repo: EventOsRepository; expoBoothId: string; actor: RequestActor; deviceMetadata?: Record<string, unknown> }) {
+  const booth = await requireVisibleExpoBooth({ repo: input.repo, expoBoothId: input.expoBoothId });
+  const activity = await getMutableParticipantActivity(input.repo, booth.activity_id);
+  const { participant } = await requireConfirmedParticipant({ repo: input.repo, activityId: booth.activity_id, actor: input.actor });
+  const qrPass = await input.repo.getActiveQRPass(booth.activity_id, participant.id);
+
+  const checkin = await input.repo.createBoothCheckin({
+    id: createId("bci"),
+    activityId: booth.activity_id,
+    participantId: participant.id,
+    expoBoothId: booth.id,
+    qrPassId: qrPass?.id,
+    deviceMetadata: input.deviceMetadata,
+  });
+
+  await writeAuditEvent(input.repo, {
+    tenantId: activity.tenant_id,
+    activityId: activity.id,
+    actor: { user: input.actor.user, authingUserId: input.actor.principal.authing_user_id, scope: "participant" },
+    action: "booth_checkin.recorded",
+    resourceType: "booth_checkin",
+    resourceId: checkin.id,
+    metadata: { expo_booth_id: booth.id, qr_pass_id: qrPass?.id },
+  });
+
+  return checkin;
+}
+
+export async function listBoothCheckinsForActor(input: { repo: EventOsRepository; activityId: string; actor: RequestActor }) {
+  await getVisibleActivity(input.repo, input.activityId);
+  const { participant } = await requireConfirmedParticipant(input);
+  return input.repo.listBoothCheckins(input.activityId, participant.id);
 }
 
 export async function checkinParticipant(input: {

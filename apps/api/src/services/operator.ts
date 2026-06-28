@@ -67,6 +67,8 @@ const templateBusinessFactKeys = new Set([
   "qr_passes",
   "my_agenda_items",
   "checkins",
+  "booth_collections",
+  "booth_checkins",
 ]);
 
 function asString(value: unknown, field: string) {

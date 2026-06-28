@@ -46,6 +46,7 @@ const workspaceSections: Array<{ id: WorkspaceSection; label: string }> = [
 ]
 
 const defaultApiBase = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000'
+const defaultAuthingToken = import.meta.env.VITE_AUTHING_TOKEN ?? ''
 const idempotencyPrefix = () => `cms_${Date.now()}_${crypto.randomUUID()}`
 
 function isError<T>(value: ApiEnvelope<T>): value is { error: { code: string; message: string } } {
@@ -108,7 +109,7 @@ function compactDateTime(value?: string) {
 
 function App() {
   const [apiBase, setApiBase] = useState(defaultApiBase)
-  const [token, setToken] = useState(localStorage.getItem('eventos.cms.authing_token') ?? '')
+  const [token, setToken] = useState(localStorage.getItem('eventos.cms.authing_token') || defaultAuthingToken)
   const [activities, setActivities] = useState<Activity[]>([])
   const [selectedId, setSelectedId] = useState<string>()
   const [sessions, setSessions] = useState<Session[]>([])

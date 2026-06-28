@@ -4,6 +4,8 @@ import type {
   ActivityOrganizer,
   ActivityPublication,
   AuditEvent,
+  BoothCheckin,
+  BoothCollection,
   BusinessResourceType,
   Block,
   Checkin,
@@ -40,6 +42,8 @@ import {
   activityOrganizers,
   activityPublications,
   auditEvents,
+  boothCheckins,
+  boothCollections,
   checkinAttempts,
   checkins,
   idempotencyRecords,
@@ -339,6 +343,32 @@ function mapExpoBooth(row: typeof expoBooths.$inferSelect): ExpoBooth {
     logo_url: optional(row.logoUrl),
     status: row.status as ExpoBooth["status"],
     sort_order: row.sortOrder,
+  };
+}
+
+function mapBoothCollection(row: typeof boothCollections.$inferSelect): BoothCollection {
+  return {
+    id: row.id,
+    activity_id: row.activityId,
+    participant_id: row.participantId,
+    expo_booth_id: row.expoBoothId,
+    source: row.source as BoothCollection["source"],
+    source_ref: optional(row.sourceRef),
+    created_at: iso(row.createdAt),
+  };
+}
+
+function mapBoothCheckin(row: typeof boothCheckins.$inferSelect): BoothCheckin {
+  return {
+    id: row.id,
+    activity_id: row.activityId,
+    participant_id: row.participantId,
+    expo_booth_id: row.expoBoothId,
+    qr_pass_id: optional(row.qrPassId),
+    source: row.source as BoothCheckin["source"],
+    staff_user_id: optional(row.staffUserId),
+    device_metadata: optional(row.deviceMetadata as Record<string, unknown> | null),
+    created_at: iso(row.createdAt),
   };
 }
 
@@ -1686,6 +1716,98 @@ export function createRepository(db: DbSession) {
           .where(and(eq(myAgendaItems.activityId, activityId), eq(myAgendaItems.participantId, participantId)))
           .orderBy(desc(myAgendaItems.createdAt))
       ).map(mapMyAgendaItem);
+    },
+
+    async addBoothCollection(input: { id: string; activityId: string; participantId: string; expoBoothId: string; source: BoothCollection["source"] }) {
+      const rows = await db
+        .insert(boothCollections)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          participantId: input.participantId,
+          expoBoothId: input.expoBoothId,
+          source: input.source,
+        })
+        .onConflictDoUpdate({
+          target: [boothCollections.activityId, boothCollections.participantId, boothCollections.expoBoothId],
+          set: { source: sql`${boothCollections.source}` },
+        })
+        .returning();
+
+      return mapBoothCollection(rows[0]);
+    },
+
+    async removeBoothCollection(activityId: string, participantId: string, expoBoothId: string) {
+      return first(
+        (
+          await db
+            .delete(boothCollections)
+            .where(and(eq(boothCollections.activityId, activityId), eq(boothCollections.participantId, participantId), eq(boothCollections.expoBoothId, expoBoothId)))
+            .returning()
+        ).map(mapBoothCollection),
+      );
+    },
+
+    async listBoothCollections(activityId: string, participantId: string) {
+      return (
+        await db
+          .select()
+          .from(boothCollections)
+          .where(and(eq(boothCollections.activityId, activityId), eq(boothCollections.participantId, participantId)))
+          .orderBy(desc(boothCollections.createdAt))
+      ).map(mapBoothCollection);
+    },
+
+    async createBoothCheckin(input: {
+      id: string;
+      activityId: string;
+      participantId: string;
+      expoBoothId: string;
+      qrPassId?: string;
+      staffUserId?: string;
+      deviceMetadata?: Record<string, unknown>;
+    }) {
+      const rows = await db
+        .insert(boothCheckins)
+        .values({
+          id: input.id,
+          activityId: input.activityId,
+          participantId: input.participantId,
+          expoBoothId: input.expoBoothId,
+          qrPassId: input.qrPassId,
+          source: input.staffUserId ? "staff" : "self",
+          staffUserId: input.staffUserId,
+          deviceMetadata: input.deviceMetadata,
+        })
+        .onConflictDoUpdate({
+          target: [boothCheckins.activityId, boothCheckins.participantId, boothCheckins.expoBoothId],
+          set: { id: sql`${boothCheckins.id}` },
+        })
+        .returning();
+
+      return mapBoothCheckin(rows[0]);
+    },
+
+    async getBoothCheckin(input: { activityId: string; participantId: string; expoBoothId: string }) {
+      return first(
+        (
+          await db
+            .select()
+            .from(boothCheckins)
+            .where(and(eq(boothCheckins.activityId, input.activityId), eq(boothCheckins.participantId, input.participantId), eq(boothCheckins.expoBoothId, input.expoBoothId)))
+            .limit(1)
+        ).map(mapBoothCheckin),
+      );
+    },
+
+    async listBoothCheckins(activityId: string, participantId: string) {
+      return (
+        await db
+          .select()
+          .from(boothCheckins)
+          .where(and(eq(boothCheckins.activityId, activityId), eq(boothCheckins.participantId, participantId)))
+          .orderBy(desc(boothCheckins.createdAt))
+      ).map(mapBoothCheckin);
     },
 
     async getSurveyResponseForParticipant(surveyId: string, participantId: string) {
