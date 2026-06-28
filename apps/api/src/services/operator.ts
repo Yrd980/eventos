@@ -27,6 +27,7 @@ import { writeAuditEvent } from "./audit";
 type JsonRecord = Record<string, unknown>;
 
 type RegistrationFormField = RegistrationForm["fields"][number];
+type SurveyQuestionOption = NonNullable<SurveyQuestion["options"]>[number];
 
 type PublicationSnapshot = {
   activity: Activity;
@@ -47,6 +48,10 @@ type PublicationSnapshot = {
 
 const registrationFormFieldTypes = new Set<RegistrationFormField["type"]>(["text", "phone", "email", "select", "multi_select", "boolean"]);
 const registrationOptionFieldTypes = new Set<RegistrationFormField["type"]>(["select", "multi_select"]);
+const surveyQuestionTypes = new Set<SurveyQuestion["type"]>(["text", "single_choice", "multiple_choice", "rating", "boolean"]);
+const surveyOptionQuestionTypes = new Set<SurveyQuestion["type"]>(["single_choice", "multiple_choice"]);
+const publishableLiveEntryStatuses = new Set<LiveEntry["status"]>(["scheduled", "live", "ended"]);
+const fieldKeyPattern = /^[A-Za-z][A-Za-z0-9_]*$/;
 const templateBusinessFactKeys = new Set([
   "sessions",
   "speakers",
@@ -1345,11 +1350,42 @@ function hasNonEmptyText(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
 }
 
+function assertResourceActivity(value: { id: string; activity_id: string }, activityId: string, resourceType: BusinessResourceType) {
+  requirePublishValidation(value.activity_id === activityId, `${resourceType} must belong to the published Activity`, {
+    resource_type: resourceType,
+    resource_id: value.id,
+    activity_id: value.activity_id,
+  });
+}
+
+function assertResourceTenant(value: { id: string; tenant_id: string }, tenantId: string, resourceType: BusinessResourceType) {
+  requirePublishValidation(value.tenant_id === tenantId, `${resourceType} must belong to the Activity Tenant`, {
+    resource_type: resourceType,
+    resource_id: value.id,
+    tenant_id: value.tenant_id,
+  });
+}
+
+function assertOptionSet(options: SurveyQuestionOption[] | undefined, context: Record<string, unknown>) {
+  const optionValues = new Set<string>();
+  for (const option of options ?? []) {
+    requirePublishValidation(hasNonEmptyText(option.label), "Option label is required", context);
+    requirePublishValidation(hasNonEmptyText(option.value), "Option value is required", context);
+    requirePublishValidation(!optionValues.has(option.value), "Option value must be unique", { ...context, option_value: option.value });
+    optionValues.add(option.value);
+  }
+}
+
 function assertRegistrationFormFields(form: RegistrationForm) {
   const keys = new Set<string>();
+  const ids = new Set<string>();
   for (const field of form.fields) {
     requirePublishValidation(hasNonEmptyText(field.id), "Registration Form field id is required", { form_id: form.id });
+    requirePublishValidation(!ids.has(field.id), "Registration Form field id must be unique", { form_id: form.id, field_id: field.id });
+    ids.add(field.id);
+
     requirePublishValidation(hasNonEmptyText(field.key), "Registration Form field key is required", { form_id: form.id, field_id: field.id });
+    requirePublishValidation(fieldKeyPattern.test(field.key), "Registration Form field key is invalid", { form_id: form.id, field_key: field.key });
     requirePublishValidation(!keys.has(field.key), "Registration Form field key must be unique", { form_id: form.id, field_key: field.key });
     keys.add(field.key);
 
@@ -1363,17 +1399,55 @@ function assertRegistrationFormFields(form: RegistrationForm) {
       requirePublishValidation(options.length === 0, "Registration Form non-select fields must not include options", { form_id: form.id, field_key: field.key });
     }
 
-    const optionValues = new Set<string>();
-    for (const option of options) {
-      requirePublishValidation(hasNonEmptyText(option.label), "Registration Form option label is required", { form_id: form.id, field_key: field.key });
-      requirePublishValidation(hasNonEmptyText(option.value), "Registration Form option value is required", { form_id: form.id, field_key: field.key });
-      requirePublishValidation(!optionValues.has(option.value), "Registration Form option value must be unique", {
-        form_id: form.id,
-        field_key: field.key,
-        option_value: option.value,
+    assertOptionSet(options, { form_id: form.id, field_key: field.key });
+  }
+}
+
+function assertSurveyQuestions(input: { surveys: Survey[]; surveyQuestions: SurveyQuestion[] }) {
+  const surveyIds = new Set(input.surveys.map((survey) => survey.id));
+  const keysBySurvey = new Map<string, Set<string>>();
+  for (const question of input.surveyQuestions) {
+    requirePublishValidation(surveyIds.has(question.survey_id), "Survey Question must belong to a published Survey", {
+      survey_id: question.survey_id,
+      question_id: question.id,
+    });
+    requirePublishValidation(hasNonEmptyText(question.key), "Survey Question key is required", { survey_id: question.survey_id, question_id: question.id });
+    requirePublishValidation(fieldKeyPattern.test(question.key), "Survey Question key is invalid", {
+      survey_id: question.survey_id,
+      question_id: question.id,
+      question_key: question.key,
+    });
+    requirePublishValidation(hasNonEmptyText(question.label), "Survey Question label is required", {
+      survey_id: question.survey_id,
+      question_id: question.id,
+    });
+    requirePublishValidation(surveyQuestionTypes.has(question.type), "Survey Question type is invalid", {
+      survey_id: question.survey_id,
+      question_id: question.id,
+      question_type: question.type,
+    });
+
+    const keys = keysBySurvey.get(question.survey_id) ?? new Set<string>();
+    requirePublishValidation(!keys.has(question.key), "Survey Question key must be unique", {
+      survey_id: question.survey_id,
+      question_key: question.key,
+    });
+    keys.add(question.key);
+    keysBySurvey.set(question.survey_id, keys);
+
+    const options = question.options ?? [];
+    if (surveyOptionQuestionTypes.has(question.type)) {
+      requirePublishValidation(options.length > 0, "Survey choice questions require options", {
+        survey_id: question.survey_id,
+        question_key: question.key,
       });
-      optionValues.add(option.value);
+    } else {
+      requirePublishValidation(options.length === 0, "Survey non-choice questions must not include options", {
+        survey_id: question.survey_id,
+        question_key: question.key,
+      });
     }
+    assertOptionSet(options, { survey_id: question.survey_id, question_key: question.key });
   }
 }
 
@@ -1434,12 +1508,59 @@ function assertBlockResourceRefs(input: {
 
 function assertLiveEntries(input: { liveEntries: LiveEntry[]; sessionIds: Set<string> }) {
   for (const entry of input.liveEntries) {
+    requirePublishValidation(hasNonEmptyText(entry.title), "Live Entry title is required", { live_entry_id: entry.id });
+    requirePublishValidation(publishableLiveEntryStatuses.has(entry.status), "Live Entry status is not publishable", {
+      live_entry_id: entry.id,
+      status: entry.status,
+    });
+    if (entry.provider === "external_link" || entry.provider === "embedded") {
+      requirePublishValidation(hasNonEmptyText(entry.url), "Live Entry url is required for this provider", {
+        live_entry_id: entry.id,
+        provider: entry.provider,
+      });
+    }
+    if (entry.provider === "miniapp_page") {
+      requirePublishValidation(hasNonEmptyText(entry.deep_link), "Live Entry deep_link is required for miniapp_page provider", {
+        live_entry_id: entry.id,
+        provider: entry.provider,
+      });
+    }
     if (entry.session_id) {
       requirePublishValidation(input.sessionIds.has(entry.session_id), "Live Entry session_id must belong to the Activity", {
         live_entry_id: entry.id,
         session_id: entry.session_id,
       });
     }
+  }
+}
+
+function assertSnapshotBoundaries(snapshot: PublicationSnapshot) {
+  for (const organizer of snapshot.organizers) {
+    assertResourceTenant(organizer, snapshot.activity.tenant_id, "organizer");
+  }
+  for (const speaker of snapshot.speakers) {
+    assertResourceTenant(speaker, snapshot.activity.tenant_id, "speaker");
+  }
+  for (const sponsor of snapshot.sponsors) {
+    assertResourceTenant(sponsor, snapshot.activity.tenant_id, "sponsor");
+  }
+  for (const session of snapshot.sessions) {
+    assertResourceActivity(session, snapshot.activity.id, "session");
+  }
+  for (const page of snapshot.page_configs) {
+    assertResourceActivity(page, snapshot.activity.id, "page_config");
+  }
+  for (const booth of snapshot.expo_booths) {
+    assertResourceActivity(booth, snapshot.activity.id, "expo_booth");
+  }
+  for (const entry of snapshot.live_entries) {
+    assertResourceActivity(entry, snapshot.activity.id, "live_entry");
+  }
+  for (const survey of snapshot.surveys) {
+    assertResourceActivity(survey, snapshot.activity.id, "survey");
+  }
+  for (const form of snapshot.registration_forms) {
+    assertResourceActivity(form, snapshot.activity.id, "registration_form");
   }
 }
 
@@ -1513,6 +1634,7 @@ function assertPublishable(activity: Activity, snapshot: PublicationSnapshot) {
   if (!activity.name || !activity.start_time || !activity.end_time || !activity.venue?.timezone) {
     throw new DomainError("VALIDATION_FAILED", "Activity basic information is incomplete", { status: 422 });
   }
+  assertSnapshotBoundaries(snapshot);
 
   const home = snapshot.page_configs.find((page) => page.page_key === "home");
   const agenda = snapshot.page_configs.find((page) => page.page_key === "agenda");
@@ -1542,6 +1664,7 @@ function assertPublishable(activity: Activity, snapshot: PublicationSnapshot) {
   for (const form of snapshot.registration_forms) {
     assertRegistrationFormFields(form);
   }
+  assertSurveyQuestions({ surveys: snapshot.surveys, surveyQuestions: snapshot.survey_questions });
 
   for (const page of snapshot.page_configs) {
     for (const block of page.blocks) {
@@ -1562,6 +1685,24 @@ function assertPublishable(activity: Activity, snapshot: PublicationSnapshot) {
       });
     }
   }
+}
+
+function publicationSnapshotMetadata(snapshot: PublicationSnapshot) {
+  return {
+    activity_id: snapshot.activity.id,
+    generated_at: snapshot.generated_at,
+    organizers: snapshot.organizers.length,
+    sessions: snapshot.sessions.length,
+    speakers: snapshot.speakers.length,
+    page_configs: snapshot.page_configs.length,
+    blocks: snapshot.page_configs.reduce((count, page) => count + page.blocks.length, 0),
+    expo_booths: snapshot.expo_booths.length,
+    sponsors: snapshot.sponsors.length,
+    live_entries: snapshot.live_entries.length,
+    surveys: snapshot.surveys.length,
+    survey_questions: snapshot.survey_questions.length,
+    registration_forms: snapshot.registration_forms.length,
+  };
 }
 
 export async function publishOperatorActivity(input: { repo: EventOsRepository; actor: RequestActor; activityId: string; summary?: string }) {
@@ -1596,7 +1737,7 @@ export async function publishOperatorActivity(input: { repo: EventOsRepository; 
     action: "activity.published",
     resourceType: "activity_publication",
     resourceId: publication.id,
-    metadata: { version },
+    metadata: { version, etag: publication.etag, snapshot: publicationSnapshotMetadata(snapshot) },
   });
 
   return publication;
@@ -1637,7 +1778,7 @@ export async function rollbackOperatorActivity(input: { repo: EventOsRepository;
     action: "activity.rollback_published",
     resourceType: "activity_publication",
     resourceId: publication.id,
-    metadata: { from_version: previous.version, version: nextVersion },
+    metadata: { from_version: previous.version, version: nextVersion, etag: publication.etag },
   });
 
   return publication;
