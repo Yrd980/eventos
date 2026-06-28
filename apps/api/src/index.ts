@@ -295,6 +295,95 @@ function parseJsonBody<T>(schema: z.ZodType<T>, body: Record<string, unknown>) {
   return result.data;
 }
 
+type SortableRow = { id: string } & Record<string, unknown>;
+
+function readOperatorListQuery<TSortKey extends string>(
+  raw: { limit?: string; cursor?: string; sortKey?: string; sortDirection?: string },
+  allowedSortKeys: readonly TSortKey[],
+  defaultSortKey: TSortKey,
+) {
+  const sortKey = raw.sortKey === undefined ? defaultSortKey : raw.sortKey;
+  if (!allowedSortKeys.includes(sortKey as TSortKey)) {
+    throw new DomainError("VALIDATION_FAILED", "sort_key is invalid for this endpoint", { status: 422, details: { sort_key: raw.sortKey, allowed_sort_keys: allowedSortKeys } });
+  }
+
+  if (raw.sortDirection !== undefined && raw.sortDirection !== "asc" && raw.sortDirection !== "desc") {
+    throw new DomainError("VALIDATION_FAILED", "sort_direction must be asc or desc", { status: 422 });
+  }
+  const sortDirection: "asc" | "desc" = raw.sortDirection ?? "desc";
+
+  return {
+    limit: readLimit(raw.limit),
+    cursor: raw.cursor,
+    sort: { key: sortKey as TSortKey, direction: sortDirection },
+  };
+}
+
+function compareSortableValue(left: unknown, right: unknown) {
+  if (typeof left === "number" && typeof right === "number") return left - right;
+  return String(left ?? "").localeCompare(String(right ?? ""));
+}
+
+function operatorListPage<TRow extends SortableRow, TSortKey extends string>(input: {
+  rows: TRow[];
+  limit: number;
+  cursor?: string;
+  sort: { key: TSortKey; direction: "asc" | "desc" };
+}) {
+  const sorted = [...input.rows].sort((left, right) => {
+    const value = compareSortableValue(left[input.sort.key], right[input.sort.key]);
+    if (value !== 0) return input.sort.direction === "asc" ? value : -value;
+    return left.id.localeCompare(right.id);
+  });
+  const start = input.cursor ? sorted.findIndex((row) => row.id === input.cursor) + 1 : 0;
+  const safeStart = start > 0 ? start : 0;
+  const page = sorted.slice(safeStart, safeStart + input.limit);
+  const hasMore = sorted.length > safeStart + input.limit;
+  return { page, hasMore, nextCursor: hasMore ? page.at(-1)?.id : undefined };
+}
+
+function operatorListMeta(input: {
+  limit: number;
+  cursor?: string;
+  hasMore: boolean;
+  nextCursor?: string;
+  sort: { key: string; direction: "asc" | "desc"; allowedKeys: readonly string[] };
+  filters?: Record<string, unknown>;
+}) {
+  return {
+    limit: input.limit,
+    cursor: input.cursor,
+    has_more: input.hasMore,
+    next_cursor: input.nextCursor,
+    sort: {
+      key: input.sort.key,
+      direction: input.sort.direction,
+      allowed_keys: input.sort.allowedKeys,
+    },
+    filters: input.filters ?? {},
+  };
+}
+
+function operatorListResponse<TRow extends SortableRow, TSortKey extends string>(
+  c: Parameters<typeof readOperatorListQuery<TSortKey>>[0],
+  rows: TRow[],
+  input: { allowedSortKeys: readonly TSortKey[]; defaultSortKey: TSortKey; filters?: Record<string, unknown> },
+) {
+  const query = readOperatorListQuery(c, input.allowedSortKeys, input.defaultSortKey);
+  const page = operatorListPage({ rows, limit: query.limit, cursor: query.cursor, sort: query.sort });
+  return success(
+    page.page,
+    operatorListMeta({
+      limit: query.limit,
+      cursor: query.cursor,
+      hasMore: page.hasMore,
+      nextCursor: page.nextCursor,
+      sort: { key: query.sort.key, direction: query.sort.direction, allowedKeys: input.allowedSortKeys },
+      filters: input.filters,
+    }),
+  );
+}
+
 async function withRepo<T>(callback: (repo: ReturnType<typeof createRepository>) => Promise<T>) {
   return callback(createRepository(database.db));
 }
@@ -370,7 +459,8 @@ app.get("/operator/activities", async (c) =>
 app.get("/operator/activity-templates", async (c) =>
   withRepo(async (repo) => {
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
-    return c.json(success(await listOperatorActivityTemplates({ repo, actor })));
+    const rows = await listOperatorActivityTemplates({ repo, actor });
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at", "name"], defaultSortKey: "created_at" }));
   }),
 );
 
@@ -417,7 +507,8 @@ function operatorTenantResourceRoutes(resourceType: "organizer" | "sponsor" | "s
   app.get(path, async (c) =>
     withRepo(async (repo) => {
       const actor = await actorFromRequest(repo, c.req.header("authorization"));
-      return c.json(success(await listOperatorTenantResources({ repo, actor, resourceType })));
+      const rows = await listOperatorTenantResources({ repo, actor, resourceType });
+      return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at", "name"], defaultSortKey: "name" }));
     }),
   );
 
@@ -517,7 +608,14 @@ app.get("/operator/activities/:activityId/sessions", async (c) =>
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
     await requireOperatorActivity({ repo, actor, activityId });
-    return c.json(success(await repo.listOperatorSessions(activityId)));
+    const rows = await repo.listOperatorSessions(activityId);
+    return c.json(
+      operatorListResponse(c.req.query(), rows, {
+        allowedSortKeys: ["start_time", "sort_order", "created_at"],
+        defaultSortKey: "start_time",
+        filters: { activity_id: activityId },
+      }),
+    );
   }),
 );
 
@@ -556,7 +654,8 @@ app.get("/operator/activities/:activityId/expo-booths", async (c) =>
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
     await requireOperatorActivity({ repo, actor, activityId });
-    return c.json(success(await repo.listOperatorExpoBooths(activityId)));
+    const rows = await repo.listOperatorExpoBooths(activityId);
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at", "name"], defaultSortKey: "name", filters: { activity_id: activityId } }));
   }),
 );
 
@@ -606,7 +705,8 @@ app.get("/operator/activities/:activityId/live-entries", async (c) =>
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
     await requireOperatorActivity({ repo, actor, activityId });
-    return c.json(success(await repo.listOperatorLiveEntries(activityId)));
+    const rows = await repo.listOperatorLiveEntries(activityId).then((entries) => entries.map((entry) => ({ ...entry, name: entry.title })));
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at", "name"], defaultSortKey: "name", filters: { activity_id: activityId } }));
   }),
 );
 
@@ -706,7 +806,8 @@ app.get("/operator/activities/:activityId/registration-submissions", async (c) =
   withRepo(async (repo) => {
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
-    return c.json(success(await listOperatorRegistrationSubmissions({ repo, actor, activityId })));
+    const rows = await listOperatorRegistrationSubmissions({ repo, actor, activityId });
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at"], defaultSortKey: "created_at", filters: { activity_id: activityId } }));
   }),
 );
 
@@ -715,7 +816,8 @@ app.get("/operator/activities/:activityId/surveys", async (c) =>
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
     await requireOperatorActivity({ repo, actor, activityId });
-    return c.json(success(await repo.listSurveys(activityId)));
+    const rows = (await repo.listSurveys(activityId)).map((survey) => ({ ...survey, name: survey.title }));
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at", "name"], defaultSortKey: "name", filters: { activity_id: activityId } }));
   }),
 );
 
@@ -723,7 +825,9 @@ app.get("/operator/activities/:activityId/survey-responses", async (c) =>
   withRepo(async (repo) => {
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
-    return c.json(success(await listOperatorSurveyResponses({ repo, actor, activityId, surveyId: c.req.query("survey_id") })));
+    const surveyId = c.req.query("survey_id");
+    const rows = (await listOperatorSurveyResponses({ repo, actor, activityId, surveyId })).map((response) => ({ ...response, created_at: response.submitted_at }));
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at"], defaultSortKey: "created_at", filters: { activity_id: activityId, survey_id: surveyId } }));
   }),
 );
 
@@ -812,7 +916,8 @@ app.get("/operator/activities/:activityId/notifications", async (c) =>
   withRepo(async (repo) => {
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
-    return c.json(success(await listOperatorNotifications({ repo, actor, activityId })));
+    const rows = (await listOperatorNotifications({ repo, actor, activityId })).map((notification) => ({ ...notification, name: notification.title }));
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at", "name"], defaultSortKey: "created_at", filters: { activity_id: activityId } }));
   }),
 );
 
@@ -989,7 +1094,8 @@ app.get("/operator/activities/:activityId/staff-grants", async (c) =>
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
     await requireOperatorActivity({ repo, actor, activityId });
-    return c.json(success(await repo.listStaffGrants(activityId)));
+    const rows = await repo.listStaffGrants(activityId);
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at"], defaultSortKey: "created_at", filters: { activity_id: activityId } }));
   }),
 );
 
@@ -1037,7 +1143,8 @@ app.get("/operator/activities/:activityId/operator-grants", async (c) =>
   withRepo(async (repo) => {
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
-    return c.json(success(await listOperatorActivityGrants({ repo, actor, activityId })));
+    const rows = await listOperatorActivityGrants({ repo, actor, activityId });
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at"], defaultSortKey: "created_at", filters: { activity_id: activityId } }));
   }),
 );
 
@@ -1086,7 +1193,8 @@ app.get("/operator/activities/:activityId/publications", async (c) =>
     const activityId = c.req.param("activityId");
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
     await requireOperatorActivity({ repo, actor, activityId });
-    return c.json(success(await repo.listPublications(activityId)));
+    const rows = (await repo.listPublications(activityId)).map((publication) => ({ ...publication, created_at: publication.published_at }));
+    return c.json(operatorListResponse(c.req.query(), rows, { allowedSortKeys: ["created_at"], defaultSortKey: "created_at", filters: { activity_id: activityId } }));
   }),
 );
 

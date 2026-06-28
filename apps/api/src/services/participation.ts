@@ -437,7 +437,7 @@ export async function getVisibleSurvey(input: { repo: EventOsRepository; surveyI
   if (!publishedSurvey || publishedSurvey.status !== "published") {
     throw new DomainError("SURVEY_NOT_FOUND", "Survey was not found", { status: 404 });
   }
-  if (survey.access_policy === "confirmed_registration" && !(await hasConfirmedRegistration({ repo: input.repo, activityId: survey.activity_id, actor: input.actor }))) {
+  if (publishedSurvey.access_policy === "confirmed_registration" && !(await hasConfirmedRegistration({ repo: input.repo, activityId: publishedSurvey.activity_id, actor: input.actor }))) {
     throw new DomainError("REGISTRATION_REQUIRED", "Confirmed Registration is required", { status: 403 });
   }
   return publishedSurvey;
@@ -471,7 +471,13 @@ export async function submitSurveyResponse(input: {
   const { participant } = await requireConfirmedParticipant({ repo: input.repo, activityId: survey.activity_id, actor: input.actor });
   const existing = await input.repo.getSurveyResponseForParticipant(survey.id, participant.id);
   if (existing) {
-    throw new DomainError("VALIDATION_FAILED", "Survey response already submitted", { status: 409, details: { response_id: existing.id } });
+    throw new DomainError("SURVEY_RESPONSE_ALREADY_EXISTS", "Survey response already submitted", {
+      status: 409,
+      details: {
+        response_id: existing.id,
+        idempotency: "Retry the original command with the same idempotency-key to receive the stored response.",
+      },
+    });
   }
 
   const questions = snapshot.surveyQuestions.filter((question) => question.survey_id === survey.id);

@@ -953,7 +953,14 @@ export async function createOperatorLiveEntry(input: {
     action: "live_entry.created",
     resourceType: "live_entry",
     resourceId: entry.id,
-    metadata: { session_id: session?.id },
+    metadata: {
+      session_id: session?.id,
+      status: entry.status,
+      access_policy: entry.access_policy,
+      provider: entry.provider,
+      start_time: entry.start_time,
+      end_time: entry.end_time,
+    },
   });
 
   return entry;
@@ -1007,7 +1014,24 @@ export async function updateOperatorLiveEntry(input: {
     action: "live_entry.updated",
     resourceType: "live_entry",
     resourceId: input.liveEntryId,
-    metadata: { session_id: hasSessionUpdate ? (session?.id ?? null) : existing.session_id },
+    metadata: {
+      before: {
+        session_id: existing.session_id,
+        status: existing.status,
+        access_policy: existing.access_policy,
+        provider: existing.provider,
+        start_time: existing.start_time,
+        end_time: existing.end_time,
+      },
+      after: {
+        session_id: entry?.session_id,
+        status: entry?.status,
+        access_policy: entry?.access_policy,
+        provider: entry?.provider,
+        start_time: entry?.start_time,
+        end_time: entry?.end_time,
+      },
+    },
   });
 
   return entry;
@@ -1045,6 +1069,7 @@ export async function upsertOperatorRegistrationForm(input: {
     action: "registration_form.upserted",
     resourceType: "registration_form",
     resourceId: form.id,
+    metadata: { field_count: form.fields.length, field_keys: form.fields.map((field) => field.key) },
   });
 
   return form;
@@ -1140,7 +1165,20 @@ export async function updateOperatorSurvey(input: {
     action: "survey.updated",
     resourceType: "survey",
     resourceId: input.surveyId,
-    metadata: { target_type: survey.target_type, target_id: survey.target_id },
+    metadata: {
+      before: {
+        target_type: existing.target_type,
+        target_id: existing.target_id,
+        access_policy: existing.access_policy,
+        status: existing.status,
+      },
+      after: {
+        target_type: survey?.target_type,
+        target_id: survey?.target_id,
+        access_policy: survey?.access_policy,
+        status: survey?.status,
+      },
+    },
   });
 
   return survey;
@@ -1223,7 +1261,7 @@ export async function upsertOperatorSurveyQuestion(input: {
     action: "survey_question.upserted",
     resourceType: "survey",
     resourceId: survey.id,
-    metadata: { question_id: question.id, key: question.key },
+    metadata: { question_id: question.id, key: question.key, type: question.type, required: question.required, option_count: question.options?.length ?? 0 },
   });
 
   return question;
@@ -1284,7 +1322,12 @@ export async function createOperatorNotification(input: {
     action: "notification.created",
     resourceType: "notification",
     resourceId: notification.id,
-    metadata: { channel: notification.channel, status: notification.status, audience_rule: notification.audience_rule },
+    metadata: {
+      channel: notification.channel,
+      status: notification.status,
+      audience_rule: notification.audience_rule,
+      scheduled_at: notification.scheduled_at,
+    },
   });
 
   return notification;
@@ -1334,7 +1377,20 @@ export async function updateOperatorNotification(input: {
     action: "notification.updated",
     resourceType: "notification",
     resourceId: input.notificationId,
-    metadata: { channel: notification?.channel, status: notification?.status, audience_rule: notification?.audience_rule },
+    metadata: {
+      before: {
+        channel: existing.channel,
+        status: existing.status,
+        audience_rule: existing.audience_rule,
+        scheduled_at: existing.scheduled_at,
+      },
+      after: {
+        channel: notification?.channel,
+        status: notification?.status,
+        audience_rule: notification?.audience_rule,
+        scheduled_at: notification?.scheduled_at,
+      },
+    },
   });
 
   return notification;
