@@ -5,6 +5,7 @@ How the engineering skills should consume this repo's domain documentation when 
 ## Before exploring, read these
 
 - `CONTEXT.md` at the repo root.
+- `docs/product/miniapp-flow.md` when working on participant mini program behavior, page logic, or local seed data.
 - `docs/adr/` for ADRs that touch the area you're about to work in.
 
 If any of these files don't exist, proceed silently. Don't flag their absence; don't suggest creating them upfront.
@@ -17,8 +18,10 @@ Single-context repo (most repos):
 /
 ├── CONTEXT.md
 ├── docs/adr/
-│   ├── 0001-event-sourced-orders.md
-│   └── 0002-postgres-for-write-model.md
+│   ├── 0001-use-activity-for-business-events.md
+│   └── 0002-separate-tenant-from-organizer.md
+├── docs/product/
+│   └── miniapp-flow.md
 └── src/
 ```
 
@@ -32,4 +35,4 @@ If the concept you need isn't in the glossary yet, that's a signal - either you'
 
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
-> _Contradicts ADR-0007 (event-sourced orders) - but worth reopening because..._
+> _Contradicts ADR-0007 (Commands, Audit Events, and Idempotency) - but worth reopening because..._
