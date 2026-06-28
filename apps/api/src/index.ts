@@ -54,6 +54,8 @@ import {
   addSessionToMyAgenda,
   checkinBooth,
   checkinParticipant,
+  getParticipantCenterState,
+  getParticipantExpoState,
   listBoothCheckinsForActor,
   getQRPassForActor,
   getCurrentRegistrationForm,
@@ -1318,6 +1320,14 @@ app.get("/activities/:activityId/expo-booths", async (c) =>
   }),
 );
 
+app.get("/activities/:activityId/participant-expo", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await optionalActorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await getParticipantExpoState({ repo, activityId, actor })));
+  }),
+);
+
 app.get("/activities/:activityId/my-booths", async (c) =>
   withRepo(async (repo) => {
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
@@ -1466,6 +1476,14 @@ app.get("/activities/:activityId/qr-pass", async (c) =>
   withRepo(async (repo) => {
     const actor = await actorFromRequest(repo, c.req.header("authorization"));
     return c.json(success(await getQRPassForActor({ repo, activityId: c.req.param("activityId"), actor, qrSecret: env.qrHmacSecret })));
+  }),
+);
+
+app.get("/activities/:activityId/participant-center", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    const actor = await actorFromRequest(repo, c.req.header("authorization"));
+    return c.json(success(await getParticipantCenterState({ repo, activityId, actor, qrSecret: env.qrHmacSecret })));
   }),
 );
 

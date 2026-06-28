@@ -1,15 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import type { BoothCollection, ExpoBooth, MyAgendaItem, Notification, QRPass, Registration, Session } from '@eventos/contracts'
+import type { BoothCollection, ExpoBooth, MyAgendaItem, Notification, Registration, Session } from '@eventos/contracts'
 import {
-  loadExpoBooths,
-  loadMyAgenda,
-  loadMyBooths,
-  loadNotifications,
-  loadQRPass,
-  loadRegistration,
-  loadSessions,
+  loadParticipantCenter,
   removeMyBooth,
   removeMyAgenda,
   resolveActivityId,
@@ -34,6 +28,7 @@ export default function MePage() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [status, setStatus] = useState('加载参与信息中')
+  const loadRef = useRef<Promise<void> | null>(null)
   const sessionById = useMemo(() => new Map(sessions.map((session) => [session.id, session])), [sessions])
   const boothById = useMemo(() => new Map(expoBooths.map((booth) => [booth.id, booth])), [expoBooths])
   const visibleAgenda = agenda.slice(0, MAX_VISIBLE_ITEMS)
@@ -41,34 +36,36 @@ export default function MePage() {
   const visibleNotifications = notifications.slice(0, MAX_VISIBLE_ITEMS)
 
   async function load() {
-    const resolvedActivityId = await resolveActivityId()
-    if (!resolvedActivityId) {
-      setStatus('请先在首页选择 Activity')
-      return
-    }
+    if (loadRef.current) return loadRef.current
+
+    const request = (async () => {
+      const resolvedActivityId = await resolveActivityId()
+      if (!resolvedActivityId) {
+        setStatus('请先在首页选择 Activity')
+        return
+      }
+      try {
+        const state = await loadParticipantCenter(resolvedActivityId)
+        setSessions(state.sessions)
+        setAgenda(state.my_agenda)
+        setExpoBooths(state.expo_booths)
+        setMyBooths(state.my_booths)
+        setNotifications(state.notifications)
+        setRegistration(state.registration)
+        setQRPass(state.qr_pass)
+        setStatus('参与信息已加载')
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : String(error))
+      }
+    })()
+
+    loadRef.current = request
     try {
-      const [sessionRows, agendaRows, boothRows, myBoothRows] = await Promise.all([
-        loadSessions(resolvedActivityId).catch(() => []),
-        loadMyAgenda(resolvedActivityId).catch(() => []),
-        loadExpoBooths(resolvedActivityId).catch(() => []),
-        loadMyBooths(resolvedActivityId).catch(() => []),
-      ])
-      setSessions(sessionRows)
-      setAgenda(agendaRows)
-      setExpoBooths(boothRows)
-      setMyBooths(myBoothRows)
-      setStatus('参与信息已加载')
-      void loadNotifications(resolvedActivityId).then(setNotifications).catch(() => setNotifications([]))
-      void loadRegistration(resolvedActivityId).then(setRegistration).catch(() => setRegistration(undefined))
-      void loadQRPass(resolvedActivityId).then(setQRPass).catch(() => setQRPass(undefined))
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error))
+      await request
+    } finally {
+      if (loadRef.current === request) loadRef.current = null
     }
   }
-
-  useEffect(() => {
-    void load()
-  }, [])
 
   Taro.useDidShow(() => {
     void load()
@@ -146,7 +143,7 @@ export default function MePage() {
               <>
                 <View className='qr-code' />
                 <Text className='qr-card__scan'>Token fingerprint stored only on server</Text>
-                <Text className='qr-card__bodyHint'>{(qrPass as QRPass).issued_at}</Text>
+                <Text className='qr-card__bodyHint'>{qrPass.issued_at}</Text>
               </>
             ) : (
               <Text className='qr-card__bodyText'>No active QR Pass</Text>

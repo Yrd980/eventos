@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { BoothCheckin, BoothCollection, ExpoBooth } from '@eventos/contracts'
-import { addMyBooth, checkinBooth, loadBoothCheckins, loadExpoBooths, loadMyBooths, removeMyBooth, resolveActivityId } from '../../utils/api'
+import { addMyBooth, checkinBooth, loadParticipantExpo, removeMyBooth, resolveActivityId } from '../../utils/api'
 import './index.css'
 
 const MAX_VISIBLE_BOOTHS = 30
@@ -18,6 +18,7 @@ export default function ExpoPage() {
   const [activeCategory, setActiveCategory] = useState(ALL_CATEGORIES)
   const [activeView, setActiveView] = useState<typeof VIEW_ALL | typeof VIEW_MY>(VIEW_ALL)
   const [status, setStatus] = useState('加载展区中')
+  const loadRef = useRef<Promise<void> | null>(null)
   const categories = useMemo(() => Array.from(new Set(items.map((item) => item.category).filter((item): item is string => Boolean(item)))), [items])
   const myBoothSet = useMemo(() => new Set(myBooths.map((item) => item.expo_booth_id)), [myBooths])
   const checkinSet = useMemo(() => new Set(boothCheckins.map((item) => item.expo_booth_id)), [boothCheckins])
@@ -29,34 +30,40 @@ export default function ExpoPage() {
   const visibleItems = filteredItems.slice(0, MAX_VISIBLE_BOOTHS)
 
   async function load() {
-    const resolvedActivityId = await resolveActivityId()
-    if (!resolvedActivityId) {
-      setStatus('请先在首页选择 Activity')
-      return
-    }
+    if (loadRef.current) return loadRef.current
+
+    const request = (async () => {
+      const resolvedActivityId = await resolveActivityId()
+      if (!resolvedActivityId) {
+        setStatus('请先在首页选择 Activity')
+        return
+      }
+      try {
+        const state = await loadParticipantExpo(resolvedActivityId)
+        const rows = state.expo_booths
+        const collectionRows = state.my_booths
+        const checkinRows = state.booth_checkins
+        setItems(rows)
+        setMyBooths(collectionRows)
+        setBoothCheckins(checkinRows)
+        const nextCategories = new Set(rows.map((item) => item.category).filter(Boolean))
+        const nextActiveCategory = activeCategory === ALL_CATEGORIES || nextCategories.has(activeCategory) ? activeCategory : ALL_CATEGORIES
+        setActiveCategory(nextActiveCategory)
+        const nextRows = nextActiveCategory === ALL_CATEGORIES ? rows : rows.filter((item) => item.category === nextActiveCategory)
+        setActiveId((current) => (current && nextRows.some((item) => item.id === current) ? current : nextRows[0]?.id))
+        setStatus(rows.length ? '展区已加载' : '暂无 Expo Booth')
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : String(error))
+      }
+    })()
+
+    loadRef.current = request
     try {
-      const [rows, collectionRows, checkinRows] = await Promise.all([
-        loadExpoBooths(resolvedActivityId),
-        loadMyBooths(resolvedActivityId).catch(() => []),
-        loadBoothCheckins(resolvedActivityId).catch(() => []),
-      ])
-      setItems(rows)
-      setMyBooths(collectionRows)
-      setBoothCheckins(checkinRows)
-      const nextCategories = new Set(rows.map((item) => item.category).filter(Boolean))
-      const nextActiveCategory = activeCategory === ALL_CATEGORIES || nextCategories.has(activeCategory) ? activeCategory : ALL_CATEGORIES
-      setActiveCategory(nextActiveCategory)
-      const nextRows = nextActiveCategory === ALL_CATEGORIES ? rows : rows.filter((item) => item.category === nextActiveCategory)
-      setActiveId((current) => (current && nextRows.some((item) => item.id === current) ? current : nextRows[0]?.id))
-      setStatus(rows.length ? '展区已加载' : '暂无 Expo Booth')
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error))
+      await request
+    } finally {
+      if (loadRef.current === request) loadRef.current = null
     }
   }
-
-  useEffect(() => {
-    void load()
-  }, [])
 
   Taro.useDidShow(() => {
     void load()

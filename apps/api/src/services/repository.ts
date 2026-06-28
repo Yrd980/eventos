@@ -1363,6 +1363,10 @@ export function createRepository(db: DbSession) {
       return mapUser(rows[0]);
     },
 
+    async getUserByAuthingUserId(authingUserId: string) {
+      return first((await db.select().from(users).where(eq(users.authingUserId, authingUserId)).limit(1)).map(mapUser));
+    },
+
     async findParticipant(activityId: string, userId: string) {
       return first(await db.select().from(participants).where(and(eq(participants.activityId, activityId), eq(participants.userId, userId))).limit(1));
     },

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { MyAgendaItem, Session } from '@eventos/contracts'
@@ -29,6 +29,7 @@ export default function SchedulePage() {
   const [activeDay, setActiveDay] = useState(ALL_DAYS)
   const [activeView, setActiveView] = useState<typeof VIEW_ALL | typeof VIEW_MY>(VIEW_ALL)
   const [status, setStatus] = useState('加载日程中')
+  const loadRef = useRef<Promise<void> | null>(null)
   const days = useMemo(() => Array.from(new Set(sessions.map(dayKey))), [sessions])
   const agendaSet = useMemo(() => new Set(agenda.map((item) => item.session_id)), [agenda])
   const filteredSessions = useMemo(() => {
@@ -39,32 +40,39 @@ export default function SchedulePage() {
   const visibleSessions = filteredSessions.slice(0, MAX_VISIBLE_SESSIONS)
 
   async function load() {
-    const resolvedActivityId = await resolveActivityId()
-    if (!resolvedActivityId) {
-      setStatus('请先在首页选择 Activity')
-      return
-    }
+    if (loadRef.current) return loadRef.current
+
+    const request = (async () => {
+      const resolvedActivityId = await resolveActivityId()
+      if (!resolvedActivityId) {
+        setStatus('请先在首页选择 Activity')
+        return
+      }
+      try {
+        const [rows, agendaRows] = await Promise.all([
+          loadSessions(resolvedActivityId),
+          loadMyAgenda(resolvedActivityId).catch(() => []),
+        ])
+        setSessions(rows)
+        setAgenda(agendaRows)
+        const nextDays = Array.from(new Set(rows.map(dayKey)))
+        const nextActiveDay = activeDay === ALL_DAYS || nextDays.includes(activeDay) ? activeDay : ALL_DAYS
+        setActiveDay(nextActiveDay)
+        const nextRows = nextActiveDay === ALL_DAYS ? rows : rows.filter((item) => dayKey(item) === nextActiveDay)
+        setSelected((current) => (current && nextRows.some((item) => item.id === current) ? current : nextRows[0]?.id))
+        setStatus(rows.length ? '日程已加载' : '暂无 Session')
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : String(error))
+      }
+    })()
+
+    loadRef.current = request
     try {
-      const [rows, agendaRows] = await Promise.all([
-        loadSessions(resolvedActivityId),
-        loadMyAgenda(resolvedActivityId).catch(() => []),
-      ])
-      setSessions(rows)
-      setAgenda(agendaRows)
-      const nextDays = Array.from(new Set(rows.map(dayKey)))
-      const nextActiveDay = activeDay === ALL_DAYS || nextDays.includes(activeDay) ? activeDay : ALL_DAYS
-      setActiveDay(nextActiveDay)
-      const nextRows = nextActiveDay === ALL_DAYS ? rows : rows.filter((item) => dayKey(item) === nextActiveDay)
-      setSelected((current) => (current && nextRows.some((item) => item.id === current) ? current : nextRows[0]?.id))
-      setStatus(rows.length ? '日程已加载' : '暂无 Session')
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error))
+      await request
+    } finally {
+      if (loadRef.current === request) loadRef.current = null
     }
   }
-
-  useEffect(() => {
-    void load()
-  }, [])
 
   Taro.useDidShow(() => {
     void load()

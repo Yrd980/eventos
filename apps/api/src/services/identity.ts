@@ -4,6 +4,11 @@ import { createId } from "./ids";
 import type { EventOsRepository } from "./repository";
 
 export async function projectActor(repo: EventOsRepository, principal: AuthingPrincipal): Promise<RequestActor> {
+  const existingUser = await repo.getUserByAuthingUserId(principal.authing_user_id);
+  if (existingUser) {
+    return { principal, user: existingUser };
+  }
+
   const user = await repo.upsertUser({
     id: createId("usr"),
     authingUserId: principal.authing_user_id,

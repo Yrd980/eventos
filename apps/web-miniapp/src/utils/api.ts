@@ -11,6 +11,9 @@ import type {
   LiveEntry,
   MyAgendaItem,
   Notification,
+  ParticipantCenterState,
+  ParticipantExpoState,
+  ParticipantQRPass,
   QRPass,
   Registration,
   RegistrationForm,
@@ -23,13 +26,13 @@ import type {
   SurveyResponse,
 } from '@eventos/contracts'
 
-export type QRPassView = QRPass & { token: string }
+export type QRPassView = ParticipantQRPass
 
 const API_BASE_KEY = 'eventos_api_base_url'
 const AUTHING_TOKEN_KEY = 'eventos_authing_token'
 const ACTIVITY_ID_KEY = 'eventos_activity_id'
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000'
-const DEFAULT_AUTHING_TOKEN = process.env.EVENTOS_DEV_AUTH_TOKEN ?? ''
+const DEFAULT_AUTHING_TOKEN = process.env.EVENTOS_DEV_AUTH_TOKEN || 'dev-operator-token'
 const READ_CACHE_TTL_MS = 15000
 
 const readCache = new Map<string, { expiresAt: number; value: unknown }>()
@@ -259,8 +262,16 @@ export async function loadMyAgenda(activityId: string) {
   return cachedRead<MyAgendaItem[]>(`/activities/${activityId}/my-agenda`)
 }
 
+export async function loadParticipantCenter(activityId: string) {
+  return cachedRead<ParticipantCenterState>(`/activities/${activityId}/participant-center`)
+}
+
 export async function loadExpoBooths(activityId: string) {
   return cachedRead<ExpoBooth[]>(`/activities/${activityId}/expo-booths`, { auth: false })
+}
+
+export async function loadParticipantExpo(activityId: string) {
+  return cachedRead<ParticipantExpoState>(`/activities/${activityId}/participant-expo`)
 }
 
 export async function loadMyBooths(activityId: string) {

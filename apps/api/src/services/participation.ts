@@ -1,4 +1,16 @@
-import type { BoothCollection, LiveEntry, MyAgendaItem, Notification, RegistrationForm, StaffCheckinResult, Survey, SurveyQuestion } from "@eventos/contracts";
+import type {
+  BoothCollection,
+  LiveEntry,
+  MyAgendaItem,
+  Notification,
+  ParticipantCenterState,
+  ParticipantExpoState,
+  ParticipantQRPass,
+  RegistrationForm,
+  StaffCheckinResult,
+  Survey,
+  SurveyQuestion,
+} from "@eventos/contracts";
 import type { RequestActor } from "../auth/authing";
 import { DomainError } from "../http/envelope";
 import { getMutableParticipantActivity, getPublishedSnapshot, getVisibleActivity } from "./activity";
@@ -6,17 +18,7 @@ import { writeAuditEvent } from "./audit";
 import { createId, signQRToken, tokenFingerprint, verifyQRToken } from "./ids";
 import type { EventOsRepository } from "./repository";
 
-export type QRPassView = {
-  id: string;
-  activity_id: string;
-  participant_id: string;
-  registration_id: string;
-  status: string;
-  issued_at: string;
-  invalidated_at?: string;
-  expires_at?: string;
-  token: string;
-};
+export type QRPassView = ParticipantQRPass;
 
 type RegistrationAnswers = Record<string, unknown>;
 
@@ -579,6 +581,65 @@ export async function listMyAgendaForActor(input: { repo: EventOsRepository; act
   await getVisibleActivity(input.repo, input.activityId);
   const { participant } = await requireConfirmedParticipant(input);
   return input.repo.listMyAgenda(input.activityId, participant.id);
+}
+
+export async function getParticipantExpoState(input: { repo: EventOsRepository; activityId: string; actor?: RequestActor }): Promise<ParticipantExpoState> {
+  await getVisibleActivity(input.repo, input.activityId);
+  const expoBooths = await input.repo.listExpoBooths(input.activityId);
+  const participant = input.actor ? await input.repo.findParticipant(input.activityId, input.actor.user.id) : undefined;
+  const registration = participant ? await input.repo.getRegistration(input.activityId, participant.id) : undefined;
+  const hasPersonalState = Boolean(participant && registration?.status === "confirmed");
+  const [myBooths, boothCheckins] = hasPersonalState
+    ? await Promise.all([
+        input.repo.listBoothCollections(input.activityId, participant!.id),
+        input.repo.listBoothCheckins(input.activityId, participant!.id),
+      ])
+    : [[], []];
+
+  return {
+    expo_booths: expoBooths,
+    my_booths: myBooths,
+    booth_checkins: boothCheckins,
+  };
+}
+
+export async function getParticipantCenterState(input: {
+  repo: EventOsRepository;
+  activityId: string;
+  actor: RequestActor;
+  qrSecret: string;
+}): Promise<ParticipantCenterState> {
+  await getVisibleActivity(input.repo, input.activityId);
+  const { participant, registration } = await requireConfirmedParticipant(input);
+  const [sessions, myAgenda, expoBooths, myBooths, notifications, qrPass] = await Promise.all([
+    input.repo.listSessions(input.activityId),
+    input.repo.listMyAgenda(input.activityId, participant.id),
+    input.repo.listExpoBooths(input.activityId),
+    input.repo.listBoothCollections(input.activityId, participant.id),
+    listNotificationsForParticipant(input),
+    input.repo.getActiveQRPass(input.activityId, participant.id),
+  ]);
+
+  return {
+    sessions,
+    my_agenda: myAgenda,
+    expo_booths: expoBooths,
+    my_booths: myBooths,
+    notifications,
+    registration,
+    qr_pass: qrPass
+      ? toQRPassView({
+          qrPass,
+          token: issueToken({
+            qrPassId: qrPass.id,
+            activityId: input.activityId,
+            participantId: participant.id,
+            registrationId: registration.id,
+            secret: input.qrSecret,
+          }),
+        })
+      : undefined,
+  };
 }
 
 async function requireVisibleExpoBooth(input: { repo: EventOsRepository; expoBoothId: string }) {

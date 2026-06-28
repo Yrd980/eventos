@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Input, Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { LiveEntry, Survey, SurveyQuestion } from '@eventos/contracts'
@@ -46,34 +46,72 @@ export default function AssistantPage() {
   const [selectedSurvey, setSelectedSurvey] = useState<Survey>()
   const [questions, setQuestions] = useState<SurveyQuestion[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
-  const [status, setStatus] = useState('加载参与资源中')
+  const [status, setStatus] = useState('按需加载参与资源')
+  const liveLoadRef = useRef<Promise<void> | null>(null)
+  const surveyLoadRef = useRef<Promise<void> | null>(null)
   const activeReply = replies[activeAction]
   const visibleLiveEntries = liveEntries.slice(0, MAX_VISIBLE_ROWS)
   const visibleSurveys = surveys.slice(0, MAX_VISIBLE_ROWS)
   const visibleQuestions = questions.slice(0, MAX_VISIBLE_ROWS)
 
-  async function loadResources() {
-    const activityId = await resolveActivityId()
-    if (!activityId) {
-      setStatus('请先在首页选择 Activity')
-      return
-    }
-    try {
-      const [liveRows, surveyRows] = await Promise.all([
-        loadLiveEntries(activityId).catch(() => []),
-        loadSurveys(activityId).catch(() => []),
-      ])
-      setLiveEntries(liveRows)
-      setSurveys(surveyRows)
-      setSelectedSurvey(surveyRows[0])
-      if (surveyRows[0]) {
-        void loadSurveyQuestions(surveyRows[0].id).then((detail) => setQuestions(detail.questions)).catch(() => setQuestions([]))
-      } else {
-        setQuestions([])
+  async function loadLiveResources() {
+    if (liveLoadRef.current) return liveLoadRef.current
+
+    const request = (async () => {
+      const activityId = await resolveActivityId()
+      if (!activityId) {
+        setStatus('请先在首页选择 Activity')
+        return
       }
-      setStatus('参与资源已加载')
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error))
+      try {
+        setStatus('加载 Live Entries 中')
+        const rows = await loadLiveEntries(activityId)
+        setLiveEntries(rows)
+        setStatus('Live Entries 已加载')
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : String(error))
+      }
+    })()
+
+    liveLoadRef.current = request
+    try {
+      await request
+    } finally {
+      if (liveLoadRef.current === request) liveLoadRef.current = null
+    }
+  }
+
+  async function loadSurveyResources() {
+    if (surveyLoadRef.current) return surveyLoadRef.current
+
+    const request = (async () => {
+      const activityId = await resolveActivityId()
+      if (!activityId) {
+        setStatus('请先在首页选择 Activity')
+        return
+      }
+      try {
+        setStatus('加载 Surveys 中')
+        const surveyRows = await loadSurveys(activityId)
+        setSurveys(surveyRows)
+        setSelectedSurvey(surveyRows[0])
+        if (surveyRows[0]) {
+          const detail = await loadSurveyQuestions(surveyRows[0].id)
+          setQuestions(detail.questions)
+        } else {
+          setQuestions([])
+        }
+        setStatus('Surveys 已加载')
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : String(error))
+      }
+    })()
+
+    surveyLoadRef.current = request
+    try {
+      await request
+    } finally {
+      if (surveyLoadRef.current === request) surveyLoadRef.current = null
     }
   }
 
@@ -107,10 +145,6 @@ export default function AssistantPage() {
     }
   }
 
-  useEffect(() => {
-    void loadResources()
-  }, [])
-
   return (
     <View className='page page--assistant'>
       <View className='mini-topbar'>
@@ -142,6 +176,8 @@ export default function AssistantPage() {
               className={`assistant-chip${index === activeAction ? ' assistant-chip--active' : ''}`}
               onClick={() => {
                 if (index !== activeAction) setActiveAction(index)
+                if (index === 0 && liveEntries.length === 0) void loadLiveResources()
+                if (index === 1 && surveys.length === 0) void loadSurveyResources()
               }}
             >
               <Text className='assistant-chip__text'>{item}</Text>
@@ -157,8 +193,12 @@ export default function AssistantPage() {
           <View
             className='assistant-result__cta'
             onClick={() => {
-              if (activeAction === 0 || activeAction === 1) {
-                void loadResources()
+              if (activeAction === 0) {
+                void loadLiveResources()
+                return
+              }
+              if (activeAction === 1) {
+                void loadSurveyResources()
                 return
               }
               Taro.switchTab({ url: activeAction === 2 ? '/pages/schedule/index' : '/pages/me/index' })
@@ -251,6 +291,7 @@ export default function AssistantPage() {
               if (index !== activeTool) setActiveTool(index)
               if (index === 1) {
                 if (activeAction !== 1) setActiveAction(1)
+                if (surveys.length === 0) void loadSurveyResources()
                 return
               }
               if (index === 2) {
@@ -262,6 +303,7 @@ export default function AssistantPage() {
                 return
               }
               if (activeAction !== 0) setActiveAction(0)
+              if (liveEntries.length === 0) void loadLiveResources()
             }}
           >
             <Text>{item}</Text>

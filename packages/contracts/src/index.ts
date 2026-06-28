@@ -314,6 +314,10 @@ export type QRPass = {
   expires_at?: ISODateTime;
 };
 
+export type ParticipantQRPass = Omit<QRPass, "token_fingerprint"> & {
+  token: string;
+};
+
 export type MyAgendaItem = {
   id: Id;
   activity_id: Id;
@@ -517,6 +521,22 @@ export type Notification = {
   status: NotificationStatus;
   scheduled_at?: ISODateTime;
   created_at: ISODateTime;
+};
+
+export type ParticipantExpoState = {
+  expo_booths: ExpoBooth[];
+  my_booths: BoothCollection[];
+  booth_checkins: BoothCheckin[];
+};
+
+export type ParticipantCenterState = {
+  sessions: Session[];
+  my_agenda: MyAgendaItem[];
+  expo_booths: ExpoBooth[];
+  my_booths: BoothCollection[];
+  notifications: Notification[];
+  registration?: Registration;
+  qr_pass?: ParticipantQRPass;
 };
 
 export type NotificationAudienceRule =
