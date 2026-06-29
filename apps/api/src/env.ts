@@ -21,6 +21,10 @@ export type ApiEnv = {
     token: string;
     authingUserId: string;
     authingOrgId: string;
+    participantToken: string;
+    participantAuthingUserId: string;
+    staffToken: string;
+    staffAuthingUserId: string;
   };
   redis: {
     host: string;
@@ -52,6 +56,10 @@ const envSchema = z
     EVENTOS_DEV_AUTH_TOKEN: z.string().min(1).default("dev-operator-token"),
     EVENTOS_DEV_AUTH_USER_ID: z.string().min(1).default("authing-dev-operator"),
     EVENTOS_DEV_AUTH_ORG_ID: z.string().min(1).default("authing-dev-org"),
+    EVENTOS_DEV_AUTH_PARTICIPANT_TOKEN: z.string().min(1).default("dev-participant-token"),
+    EVENTOS_DEV_AUTH_PARTICIPANT_USER_ID: z.string().min(1).default("authing-dev-participant"),
+    EVENTOS_DEV_AUTH_STAFF_TOKEN: z.string().min(1).default("dev-staff-token"),
+    EVENTOS_DEV_AUTH_STAFF_USER_ID: z.string().min(1).default("authing-dev-staff"),
     REDIS_HOST: z.string().min(1).default("localhost"),
     REDIS_PORT: z.coerce.number().int().positive().default(6379),
     REDIS_PASSWORD: optionalString,
@@ -83,6 +91,10 @@ export function readEnv(): ApiEnv {
       token: env.EVENTOS_DEV_AUTH_TOKEN,
       authingUserId: env.EVENTOS_DEV_AUTH_USER_ID,
       authingOrgId: env.EVENTOS_DEV_AUTH_ORG_ID,
+      participantToken: env.EVENTOS_DEV_AUTH_PARTICIPANT_TOKEN,
+      participantAuthingUserId: env.EVENTOS_DEV_AUTH_PARTICIPANT_USER_ID,
+      staffToken: env.EVENTOS_DEV_AUTH_STAFF_TOKEN,
+      staffAuthingUserId: env.EVENTOS_DEV_AUTH_STAFF_USER_ID,
     },
     redis: {
       host: env.REDIS_HOST,

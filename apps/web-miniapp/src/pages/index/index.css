@@ -46,26 +46,6 @@
   font-weight: 800;
 }
 
-.config-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-  margin-top: 18rpx;
-  padding: 16rpx;
-  border-radius: 18rpx;
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.config-panel__button {
-  padding: 14rpx 18rpx;
-  border-radius: 999rpx;
-  background: #111827;
-  color: #fff;
-  text-align: center;
-  font-size: 24rpx;
-  font-weight: 800;
-}
-
 .activity-switcher {
   display: flex;
   gap: 12rpx;

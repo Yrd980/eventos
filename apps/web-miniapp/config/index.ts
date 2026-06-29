@@ -1,5 +1,8 @@
 import type { UserConfigExport } from '@tarojs/cli'
 
+const miniappDevAuthMode = process.env.EVENTOS_MINIAPP_DEV_AUTH_MODE ?? 'true'
+const miniappDevAuthToken = process.env.EVENTOS_MINIAPP_DEV_AUTH_TOKEN ?? process.env.EVENTOS_DEV_AUTH_PARTICIPANT_TOKEN ?? 'dev-participant-token'
+
 export default {
   projectName: 'eventos-web-miniapp',
   date: '2026-06-26',
@@ -17,7 +20,8 @@ export default {
   framework: 'react',
   platform: 'weapp',
   defineConstants: {
-    'process.env.EVENTOS_DEV_AUTH_TOKEN': JSON.stringify(process.env.EVENTOS_DEV_AUTH_TOKEN ?? ''),
+    'process.env.EVENTOS_MINIAPP_DEV_AUTH_MODE': JSON.stringify(miniappDevAuthMode),
+    'process.env.EVENTOS_MINIAPP_DEV_AUTH_TOKEN': JSON.stringify(miniappDevAuthToken),
   },
   cache: {
     enable: true,

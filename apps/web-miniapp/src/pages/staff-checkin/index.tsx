@@ -58,7 +58,7 @@ const codeCopy: Partial<Record<DomainErrorCode, Pick<CheckinDisplayState, 'tone'
   AUTHENTICATION_REQUIRED: {
     tone: 'danger',
     title: '需要 Staff 登录',
-    detail: '请先在首页配置 Authing bearer token。',
+    detail: '请先完成 Authing 登录，或在开发构建中启用 dev auth 配置。',
   },
 }
 

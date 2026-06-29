@@ -32,7 +32,8 @@ const API_BASE_KEY = 'eventos_api_base_url'
 const AUTHING_TOKEN_KEY = 'eventos_authing_token'
 const ACTIVITY_ID_KEY = 'eventos_activity_id'
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000'
-const DEFAULT_AUTHING_TOKEN = process.env.EVENTOS_DEV_AUTH_TOKEN || 'dev-operator-token'
+const DEV_AUTH_MODE = process.env.EVENTOS_MINIAPP_DEV_AUTH_MODE !== 'false'
+const DEFAULT_AUTHING_TOKEN = DEV_AUTH_MODE ? process.env.EVENTOS_MINIAPP_DEV_AUTH_TOKEN || 'dev-participant-token' : ''
 const READ_CACHE_TTL_MS = 15000
 
 const readCache = new Map<string, { expiresAt: number; value: unknown }>()
@@ -67,14 +68,24 @@ export function setApiBaseUrl(value: string) {
 }
 
 export function getAuthingToken() {
+  if (DEV_AUTH_MODE) return DEFAULT_AUTHING_TOKEN
   try {
-    return (Taro.getStorageSync(AUTHING_TOKEN_KEY) as string | undefined) || DEFAULT_AUTHING_TOKEN
+    return (Taro.getStorageSync(AUTHING_TOKEN_KEY) as string | undefined) || ''
   } catch {
-    return DEFAULT_AUTHING_TOKEN
+    return ''
   }
 }
 
+export function isDevAuthMode() {
+  return DEV_AUTH_MODE
+}
+
+export function hasAuthingSession() {
+  return Boolean(getAuthingToken())
+}
+
 export function setAuthingToken(value: string) {
+  if (DEV_AUTH_MODE) return
   try {
     Taro.setStorageSync(AUTHING_TOKEN_KEY, value)
     clearReadCache()

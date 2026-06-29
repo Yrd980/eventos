@@ -3,17 +3,14 @@ import { Input, Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import type { Activity, ActivityPublication, Notification, RegistrationForm } from '@eventos/contracts'
 import {
-  getApiBaseUrl,
-  getAuthingToken,
   getStoredActivityId,
+  hasAuthingSession,
   loadActivities,
   loadActivity,
   loadNotifications,
   loadPublication,
   loadRegistrationForm,
   register,
-  setApiBaseUrl,
-  setAuthingToken,
   setStoredActivityId,
   submitRegistrationForm,
 } from '../../utils/api'
@@ -26,8 +23,6 @@ export default function Index() {
   const [registrationForm, setRegistrationForm] = useState<RegistrationForm>()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [formAnswers, setFormAnswers] = useState<Record<string, string>>({})
-  const [apiBase, setApiBase] = useState(() => getApiBaseUrl())
-  const [token, setToken] = useState(() => getAuthingToken())
   const [status, setStatus] = useState('加载活动中')
 
   async function loadParticipantResources(activityId: string) {
@@ -72,7 +67,7 @@ export default function Index() {
 
   async function submitRegistration() {
     if (!activity) return
-    if (!token) {
+    if (!hasAuthingSession()) {
       Taro.showToast({ title: '需要 Authing token', icon: 'none' })
       return
     }
@@ -87,7 +82,7 @@ export default function Index() {
 
   async function submitCurrentForm() {
     if (!activity || !registrationForm) return
-    if (!token) {
+    if (!hasAuthingSession()) {
       Taro.showToast({ title: '需要 Authing token', icon: 'none' })
       return
     }
@@ -114,21 +109,6 @@ export default function Index() {
         <Text className='mini-topbar__title'>Activity Home</Text>
         <View className='mini-topbar__menu' onClick={goAssistant}>
           <Text>AI</Text>
-        </View>
-      </View>
-
-      <View className='config-panel'>
-        <Input value={apiBase} placeholder='API base URL' onInput={(event) => setApiBase(event.detail.value)} />
-        <Input value={token} placeholder='Authing bearer token' onInput={(event) => setToken(event.detail.value)} />
-        <View
-          className='config-panel__button'
-          onClick={() => {
-            setApiBaseUrl(apiBase)
-            setAuthingToken(token)
-            void load()
-          }}
-        >
-          保存并刷新
         </View>
       </View>
 

@@ -52,6 +52,19 @@ function normalizeDomain(domain: string) {
   return domain.startsWith("https://") || domain.startsWith("http://") ? domain : `https://${domain}`;
 }
 
+function devPrincipal(input: { authingUserId: string; displayName: string; authingOrgId: string }): AuthingPrincipal {
+  return {
+    authing_user_id: input.authingUserId,
+    display_name: input.displayName,
+    org_ids: [input.authingOrgId],
+    raw_claims: {
+      sub: input.authingUserId,
+      org_id: input.authingOrgId,
+      eventos_dev_auth: true,
+    },
+  };
+}
+
 export function createAuthingVerifier(env: ApiEnv): AuthingVerifier {
   if (env.nodeEnv === "development" && env.devAuth.enabled) {
     return {
@@ -61,20 +74,31 @@ export function createAuthingVerifier(env: ApiEnv): AuthingVerifier {
         }
 
         const token = header.slice("Bearer ".length);
-        if (token !== env.devAuth.token) {
-          throw new DomainError("AUTHENTICATION_REQUIRED", "Authing bearer token is invalid for local development", { status: 401 });
+        if (token === env.devAuth.participantToken) {
+          return devPrincipal({
+            authingUserId: env.devAuth.participantAuthingUserId,
+            displayName: "Development Participant",
+            authingOrgId: env.devAuth.authingOrgId,
+          });
         }
 
-        return {
-          authing_user_id: env.devAuth.authingUserId,
-          display_name: "Development Operator",
-          org_ids: [env.devAuth.authingOrgId],
-          raw_claims: {
-            sub: env.devAuth.authingUserId,
-            org_id: env.devAuth.authingOrgId,
-            eventos_dev_auth: true,
-          },
-        };
+        if (token === env.devAuth.token) {
+          return devPrincipal({
+            authingUserId: env.devAuth.authingUserId,
+            displayName: "Development Operator",
+            authingOrgId: env.devAuth.authingOrgId,
+          });
+        }
+
+        if (token === env.devAuth.staffToken) {
+          return devPrincipal({
+            authingUserId: env.devAuth.staffAuthingUserId,
+            displayName: "Development Staff",
+            authingOrgId: env.devAuth.authingOrgId,
+          });
+        }
+
+        throw new DomainError("AUTHENTICATION_REQUIRED", "Authing bearer token is invalid for local development", { status: 401 });
       },
     };
   }
