@@ -2,8 +2,8 @@
   "name": "@eventos/web-miniapp",
   "private": true,
   "scripts": {
-    "dev": "taro build --type weapp --watch",
-    "build": "taro build --type weapp",
+    "dev": "bun scripts/dev-weapp.ts",
+    "build": "taro build --type weapp && bun scripts/sync-private-project-config.ts",
     "dev:h5": "taro build --type h5 --watch",
     "build:h5": "taro build --type h5",
     "typecheck": "bunx tsc --noEmit"

@@ -14,3 +14,4 @@ apps/**/.temp
 apps/**/output
 apps/**/.swc
 apps/**/.DS_Store
+apps/**/project.private.config.json
