@@ -15,55 +15,61 @@ type CheckinDisplayState = {
 
 const initialState: CheckinDisplayState = {
   tone: 'idle',
-  title: '等待 QR Pass',
-  detail: '选择 Session 后扫码或粘贴 QR Pass 内容进行现场 Check-in。',
+  title: '等待入场凭证',
+  detail: '选择日程后扫码或粘贴入场凭证内容进行现场签到。',
 }
 
 const codeCopy: Partial<Record<DomainErrorCode, Pick<CheckinDisplayState, 'tone' | 'title' | 'detail'>>> = {
   QR_PASS_INVALID: {
     tone: 'danger',
-    title: 'QR Pass 无效',
-    detail: '凭证无法验证，未创建 Check-in。',
+    title: '入场凭证无效',
+    detail: '凭证无法验证，未创建签到记录。',
   },
   QR_PASS_EXPIRED: {
     tone: 'danger',
-    title: 'QR Pass 已过期',
-    detail: '凭证过期，未创建 Check-in。',
+    title: '入场凭证已过期',
+    detail: '凭证过期，未创建签到记录。',
   },
   QR_PASS_ACTIVITY_MISMATCH: {
     tone: 'danger',
-    title: 'Activity 不匹配',
-    detail: '该 QR Pass 不属于当前 Activity，未创建 Check-in。',
+    title: '活动不匹配',
+    detail: '该入场凭证不属于当前活动，未创建签到记录。',
   },
   REGISTRATION_CANCELLED: {
     tone: 'danger',
-    title: 'Registration 已取消',
-    detail: '该参与记录已取消，未创建 Check-in。',
+    title: '报名已取消',
+    detail: '该参与记录已取消，未创建签到记录。',
   },
   REGISTRATION_NOT_CONFIRMED: {
     tone: 'danger',
-    title: 'Registration 未确认',
-    detail: '只有 confirmed Registration 可以 Check-in。',
+    title: '报名未确认',
+    detail: '只有已确认报名可以签到。',
   },
   SESSION_NOT_CHECKINABLE: {
     tone: 'danger',
-    title: 'Session 不可签到',
-    detail: '当前 Session 状态不接受 Check-in。',
+    title: '日程不可签到',
+    detail: '当前日程状态不接受签到。',
   },
   STAFF_UNAUTHORIZED_FOR_ACTIVITY: {
     tone: 'danger',
-    title: 'Staff 未授权',
-    detail: '当前 Authing identity 没有此 Activity 的 Staff grant。',
+    title: '工作人员未授权',
+    detail: '当前 Authing 身份没有此活动的工作人员授权。',
   },
   AUTHENTICATION_REQUIRED: {
     tone: 'danger',
-    title: '需要 Staff 登录',
+    title: '需要工作人员登录',
     detail: '请先完成 Authing 登录，或在开发构建中启用 dev auth 配置。',
   },
 }
 
 function timeRange(session: Session) {
   return `${session.start_time.slice(11, 16)} - ${session.end_time.slice(11, 16)}`
+}
+
+function outcomeLabel(value?: StaffCheckinOutcome) {
+  if (value === 'duplicate') return '重复签到'
+  if (value === 'success') return '签到成功'
+  return value
 }
 
 function readRouteSessionId() {
@@ -76,7 +82,7 @@ export default function StaffCheckinPage() {
   const [selectedSessionId, setSelectedSessionId] = useState(readRouteSessionId())
   const [qrToken, setQrToken] = useState('')
   const [count, setCount] = useState<number>()
-  const [status, setStatus] = useState('加载 Session 中')
+  const [status, setStatus] = useState('加载日程中')
   const [result, setResult] = useState<CheckinDisplayState>(initialState)
   const activityId = getStoredActivityId()
   const selectedSession = useMemo(
@@ -91,7 +97,7 @@ export default function StaffCheckinPage() {
 
   async function load() {
     if (!activityId) {
-      setStatus('请先在首页选择 Activity')
+      setStatus('请先在首页选择活动')
       return
     }
 
@@ -100,7 +106,7 @@ export default function StaffCheckinPage() {
       setSessions(rows)
       const nextSessionId = selectedSessionId || rows[0]?.id || ''
       setSelectedSessionId(nextSessionId)
-      setStatus(rows.length ? 'Staff Check-in ready' : '暂无可签到 Session')
+      setStatus(rows.length ? '工作人员签到已就绪' : '暂无可签到日程')
       if (nextSessionId) await refreshCount(nextSessionId)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error))
@@ -115,7 +121,7 @@ export default function StaffCheckinPage() {
     try {
       const scanResult = await Taro.scanCode({ onlyFromCamera: false })
       setQrToken(scanResult.result)
-      setResult({ tone: 'idle', title: '已读取 QR Pass', detail: 'QR Pass 内容仅用于提交 Check-in，不在页面展示。' })
+      setResult({ tone: 'idle', title: '已读取入场凭证', detail: '入场凭证内容仅用于提交签到，不在页面展示。' })
     } catch (error) {
       setResult({
         tone: 'warning',
@@ -127,11 +133,11 @@ export default function StaffCheckinPage() {
 
   async function submit() {
     if (!selectedSession) {
-      setResult({ tone: 'danger', title: '未选择 Session', detail: '请先选择一个 Session。' })
+      setResult({ tone: 'danger', title: '未选择日程', detail: '请先选择一个日程。' })
       return
     }
     if (!qrToken.trim()) {
-      setResult({ tone: 'danger', title: '缺少 QR Pass', detail: '请扫码或粘贴 QR Pass 内容。' })
+      setResult({ tone: 'danger', title: '缺少入场凭证', detail: '请扫码或粘贴入场凭证内容。' })
       return
     }
 
@@ -151,13 +157,13 @@ export default function StaffCheckinPage() {
           ? {
               tone: 'warning',
               title: '已签到',
-              detail: '该 QR Pass 已完成本 Session Check-in，人数未重复增加。',
+              detail: '该入场凭证已完成本日程签到，人数未重复增加。',
               outcome: response.outcome,
             }
           : {
               tone: 'success',
-              title: 'Check-in 成功',
-              detail: '签到已写入 PostgreSQL，并可通过 Realtime 更新人数。',
+              title: '签到成功',
+              detail: '签到已写入系统，并可通过实时服务更新人数。',
               outcome: response.outcome,
             },
       )
@@ -173,7 +179,7 @@ export default function StaffCheckinPage() {
         return
       }
 
-      setResult({ tone: 'danger', title: 'Check-in 失败', detail: error instanceof Error ? error.message : String(error) })
+      setResult({ tone: 'danger', title: '签到失败', detail: error instanceof Error ? error.message : String(error) })
     }
   }
 
@@ -191,14 +197,14 @@ export default function StaffCheckinPage() {
     <View className='page page--staff'>
       <View className='staff-topbar'>
         <Text className='staff-topbar__back' onClick={() => Taro.navigateBack()}>返回</Text>
-        <Text className='staff-topbar__title'>Staff Check-in</Text>
+        <Text className='staff-topbar__title'>工作人员签到</Text>
         <Text className='staff-topbar__count'>{typeof count === 'number' ? count : '--'}</Text>
       </View>
 
       <View className='staff-status'>
         <Text className='staff-status__label'>{status}</Text>
-        <Text className='staff-status__title'>{selectedSession?.title ?? '选择 Session'}</Text>
-        <Text className='staff-status__meta'>{selectedSession ? `${timeRange(selectedSession)} · ${selectedSession.room_name ?? selectedSession.venue_area ?? 'Activity venue'}` : 'No Session'}</Text>
+        <Text className='staff-status__title'>{selectedSession?.title ?? '选择日程'}</Text>
+        <Text className='staff-status__meta'>{selectedSession ? `${timeRange(selectedSession)} · ${selectedSession.room_name ?? selectedSession.venue_area ?? '活动场地'}` : '暂无日程'}</Text>
       </View>
 
       <View className='session-picker'>
@@ -217,7 +223,7 @@ export default function StaffCheckinPage() {
         <View className={`result result--${result.tone}`}>
           <Text className='result__title'>{result.title}</Text>
           <Text className='result__detail'>{result.detail}</Text>
-          {(result.code || result.outcome) && <Text className='result__code'>{result.code ?? result.outcome}</Text>}
+          {(result.code || result.outcome) && <Text className='result__code'>{result.code ?? outcomeLabel(result.outcome)}</Text>}
         </View>
 
         <View className='scan-panel__actions'>
@@ -229,10 +235,10 @@ export default function StaffCheckinPage() {
           className='token-input'
           password
           value={qrToken}
-          placeholder='粘贴 QR Pass 内容'
+          placeholder='粘贴入场凭证内容'
           onInput={(event) => setQrToken(event.detail.value)}
         />
-        <Text className='scan-panel__hint'>页面不显示 raw token；提交后仅展示结果、错误码和人数。</Text>
+        <Text className='scan-panel__hint'>页面不显示原始凭证；提交后仅展示结果、错误码和人数。</Text>
       </View>
     </View>
   )

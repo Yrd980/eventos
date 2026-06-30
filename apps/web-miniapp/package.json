@@ -4,6 +4,9 @@
   "scripts": {
     "dev": "bun scripts/dev-weapp.ts",
     "build": "taro build --type weapp && bun scripts/sync-private-project-config.ts",
+    "build:dev": "taro build --type weapp --env development",
+    "build:fast": "taro build --type weapp",
+    "build:page": "taro build --type weapp --env development --pages",
     "dev:h5": "taro build --type h5 --watch",
     "build:h5": "taro build --type h5",
     "typecheck": "bunx tsc --noEmit"
@@ -20,10 +23,13 @@
   },
   "devDependencies": {
     "@babel/preset-react": "^7.29.7",
+    "@tailwindcss/postcss": "4",
     "@tarojs/cli": "4.1.4",
     "@tarojs/webpack5-runner": "4.1.4",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
+    "esbuild-loader": "4.5.0",
+    "tailwindcss": "4",
     "typescript": "5.8.3"
   }
 }

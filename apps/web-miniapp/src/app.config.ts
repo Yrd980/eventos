@@ -1,6 +1,7 @@
 export default {
   pages: [
     'pages/index/index',
+    'pages/register/index',
     'pages/schedule/index',
     'pages/assistant/index',
     'pages/expo/index',
@@ -9,10 +10,10 @@ export default {
   ],
   lazyCodeLoading: 'requiredComponents',
   tabBar: {
-    color: '#64748b',
-    selectedColor: '#4053e6',
+    color: '#999999',
+    selectedColor: '#111111',
     backgroundColor: '#ffffff',
-    borderStyle: 'white',
+    borderStyle: 'black',
     list: [
       {
         pagePath: 'pages/index/index',

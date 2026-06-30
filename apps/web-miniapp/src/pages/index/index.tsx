@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Input, Text, View } from '@tarojs/components'
+import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import type { Activity, ActivityPublication, Notification, RegistrationForm } from '@eventos/contracts'
+import type { Activity, ActivityPublication, Notification, Speaker } from '@eventos/contracts'
 import {
   getStoredActivityId,
   hasAuthingSession,
@@ -9,20 +9,24 @@ import {
   loadActivity,
   loadNotifications,
   loadPublication,
-  loadRegistrationForm,
-  register,
+  loadSpeakers,
   setStoredActivityId,
-  submitRegistrationForm,
 } from '../../utils/api'
 import './index.css'
+
+function formatActivityDate(value?: string) {
+  if (!value) return '时间待公布'
+  const date = new Date(value)
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
 
 export default function Index() {
   const [activities, setActivities] = useState<Activity[]>([])
   const [activity, setActivity] = useState<Activity>()
   const [publication, setPublication] = useState<ActivityPublication>()
-  const [registrationForm, setRegistrationForm] = useState<RegistrationForm>()
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const [formAnswers, setFormAnswers] = useState<Record<string, string>>({})
+  const [speakers, setSpeakers] = useState<Speaker[]>([])
+  const [currentSpeakerIndex, setCurrentSpeakerIndex] = useState(0)
   const [status, setStatus] = useState('加载活动中')
 
   async function loadParticipantResources(activityId: string) {
@@ -31,8 +35,8 @@ export default function Index() {
         setPublication(value)
         return value
       }).catch(() => undefined),
-      loadRegistrationForm(activityId).then(setRegistrationForm).catch(() => setRegistrationForm(undefined)),
       loadNotifications(activityId).then(setNotifications).catch(() => setNotifications([])),
+      loadSpeakers(activityId).then(setSpeakers).catch(() => setSpeakers([])),
     ])
     if (published) setStatus(`已恢复发布版本 v${published.version}`)
   }
@@ -62,53 +66,43 @@ export default function Index() {
     void load()
   }, [])
 
+  useEffect(() => {
+    if (speakers.length <= 1) return
+    const timer = setInterval(() => {
+      setCurrentSpeakerIndex((prev) => (prev + 1) % speakers.length)
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [speakers.length])
+
   const goSchedule = () => Taro.switchTab({ url: '/pages/schedule/index' })
   const goAssistant = () => Taro.switchTab({ url: '/pages/assistant/index' })
-
-  async function submitRegistration() {
-    if (!activity) return
+  const goExpo = () => Taro.switchTab({ url: '/pages/expo/index' })
+  const goMe = () => Taro.switchTab({ url: '/pages/me/index' })
+  const goRegister = () => {
     if (!hasAuthingSession()) {
       Taro.showToast({ title: '需要 Authing token', icon: 'none' })
       return
     }
-    try {
-      await register(activity.id)
-      Taro.showToast({ title: '报名已确认', icon: 'none' })
-      Taro.switchTab({ url: '/pages/me/index' })
-    } catch (error) {
-      Taro.showToast({ title: error instanceof Error ? error.message : String(error), icon: 'none' })
-    }
+    Taro.navigateTo({ url: '/pages/register/index' })
   }
 
-  async function submitCurrentForm() {
-    if (!activity || !registrationForm) return
-    if (!hasAuthingSession()) {
-      Taro.showToast({ title: '需要 Authing token', icon: 'none' })
-      return
-    }
-    const typedAnswers = registrationForm.fields.reduce<Record<string, unknown>>((current, field) => {
-      const value = formAnswers[field.key]
-      if (value === undefined || value === '') return current
-      if (field.type === 'boolean') current[field.key] = value === 'true'
-      else if (field.type === 'multi_select') current[field.key] = value.split(',').filter(Boolean)
-      else current[field.key] = value
-      return current
-    }, {})
-    try {
-      await submitRegistrationForm(activity.id, typedAnswers)
-      Taro.showToast({ title: '报名表已提交', icon: 'none' })
-    } catch (error) {
-      Taro.showToast({ title: error instanceof Error ? error.message : String(error), icon: 'none' })
-    }
+  const shareToFriends = () => {
+    Taro.showShareMenu({ withShareTicket: true })
+  }
+
+  const handleAIInput = () => {
+    goAssistant()
   }
 
   return (
     <View className='page page--home'>
-      <View className='mini-topbar'>
-        <Text className='mini-topbar__back' onClick={goSchedule}>日程</Text>
-        <Text className='mini-topbar__title'>Activity Home</Text>
-        <View className='mini-topbar__menu' onClick={goAssistant}>
-          <Text>AI</Text>
+      <View className='home-head'>
+        <View>
+          <Text className='home-head__label'>活动模板</Text>
+          <Text className='home-head__title'>活动首页</Text>
+        </View>
+        <View className='home-head__share' onClick={shareToFriends}>
+          <Text className='home-head__shareText'>分享好友</Text>
         </View>
       </View>
 
@@ -130,36 +124,82 @@ export default function Index() {
         </View>
       )}
 
+      {speakers.length > 0 && (
+        <View className='speaker-carousel'>
+          <View className='speaker-card'>
+            <View className='speaker-card__avatar'>
+              {speakers[currentSpeakerIndex]?.avatar_url ? (
+                <Text className='speaker-card__avatarText'>🎤</Text>
+              ) : (
+                <Text className='speaker-card__avatarText'>🎤</Text>
+              )}
+            </View>
+            <View className='speaker-card__info'>
+              <Text className='speaker-card__name'>{speakers[currentSpeakerIndex]?.name}</Text>
+              <Text className='speaker-card__title'>{speakers[currentSpeakerIndex]?.title ?? speakers[currentSpeakerIndex]?.organization}</Text>
+            </View>
+          </View>
+          <View className='speaker-dots'>
+            {speakers.slice(0, 5).map((_, index) => (
+              <View
+                key={index}
+                className={`speaker-dots__dot${index === currentSpeakerIndex ? ' speaker-dots__dot--active' : ''}`}
+              />
+            ))}
+          </View>
+        </View>
+      )}
+
       <View className='activity-hero'>
-        <Text className='activity-hero__status'>{status}</Text>
-        <Text className='activity-hero__title'>{activity?.name ?? 'Event OS'}</Text>
-        <Text className='activity-hero__desc'>{activity?.description ?? '多租户活动平台'}</Text>
-        <Text className='activity-hero__meta'>{activity ? `${activity.start_time} / ${activity.venue.venue_name ?? activity.venue.city ?? activity.timezone}` : '等待活动数据'}</Text>
-        <Text className='activity-hero__meta'>{publication ? `Published v${publication.version} · ${publication.etag.slice(0, 10)}` : 'Publication snapshot 未加载'}</Text>
+        <View className='activity-hero__top'>
+          <View className={`activity-hero__badge${activity?.status === 'archived' ? ' activity-hero__badge--archived' : ''}`}>
+            {activity?.status === 'archived' ? '已归档' : '开放中'}
+          </View>
+          <Text className='activity-hero__date'>{formatActivityDate(activity?.start_time)} - {formatActivityDate(activity?.end_time)}</Text>
+        </View>
+        <Text className='activity-hero__title'>{activity?.name ?? '活动名称待配置'}</Text>
+        <Text className='activity-hero__desc'>{activity?.description ?? '活动简介、亮点和报名说明将在发布后展示。'}</Text>
+        <Text className='activity-hero__meta'>{activity?.venue.venue_name ?? activity?.venue.city ?? '地点待公布'}</Text>
+        <View className='activity-hero__actions'>
+          <View className='activity-hero__register' onClick={goRegister}>
+            {activity?.status === 'archived' ? '查看报名信息' : '立即免费报名'}
+          </View>
+        </View>
+        <View className='activity-hero__download' onClick={() => Taro.showToast({ title: '白皮书即将上线', icon: 'none' })}>
+          <Text className='activity-hero__downloadText'>白皮书下载</Text>
+        </View>
+      </View>
+
+      <View className='status-row'>
+        <Text>{status}</Text>
+        {publication && <Text>已发布 v{publication.version}</Text>}
       </View>
 
       <View className='action-grid'>
-        <View className='action-card action-card--primary' onClick={submitRegistration}>
-          <Text className='action-card__title'>{activity?.status === 'archived' ? '查看报名' : '立即报名'}</Text>
-          <Text className='action-card__meta'>Confirmed Registration to QR Pass</Text>
-        </View>
         <View className='action-card' onClick={goSchedule}>
-          <Text className='action-card__title'>Agenda</Text>
-          <Text className='action-card__meta'>浏览 Sessions 和 My Agenda</Text>
+          <Text className='action-card__title'>日程</Text>
+          <Text className='action-card__meta'>查看全部日程和我的日程</Text>
         </View>
-        <View className='action-card' onClick={() => Taro.switchTab({ url: '/pages/expo/index' })}>
-          <Text className='action-card__title'>Expo</Text>
-          <Text className='action-card__meta'>强类型 Expo Booth</Text>
+        <View className='action-card' onClick={goExpo}>
+          <Text className='action-card__title'>展区</Text>
+          <Text className='action-card__meta'>查看展位、赞助商和现场导览</Text>
         </View>
-        <View className='action-card' onClick={() => Taro.switchTab({ url: '/pages/me/index' })}>
-          <Text className='action-card__title'>Me</Text>
-          <Text className='action-card__meta'>QR Pass / Registration / My Agenda</Text>
+        <View className='action-card' onClick={goMe}>
+          <Text className='action-card__title'>我的</Text>
+          <Text className='action-card__meta'>入场凭证、报名和个人日程</Text>
+        </View>
+        <View className='action-card' onClick={goAssistant}>
+          <Text className='action-card__title'>AI 助手</Text>
+          <Text className='action-card__meta'>咨询日程、展区和参会信息</Text>
         </View>
       </View>
 
       {notifications.length > 0 && (
         <View className='resource-section'>
-          <Text className='resource-section__title'>Notifications</Text>
+          <View className='section-head'>
+            <Text className='resource-section__title'>活动通知</Text>
+          </View>
+          <View className='resource-divider' />
           {notifications.slice(0, 3).map((item) => (
             <View key={item.id} className='resource-row'>
               <Text className='resource-row__title'>{item.title}</Text>
@@ -169,59 +209,12 @@ export default function Index() {
         </View>
       )}
 
-      {registrationForm && (
-        <View className='resource-section'>
-          <Text className='resource-section__title'>{registrationForm.title}</Text>
-          {registrationForm.fields.map((field) => (
-            <View key={field.id} className='form-field'>
-              <Text className='form-field__label'>{field.label}{field.required ? ' *' : ''}</Text>
-              {field.type === 'boolean' ? (
-                <View
-                  className={`form-option${formAnswers[field.key] === 'true' ? ' form-option--active' : ''}`}
-                  onClick={() => setFormAnswers((current) => ({ ...current, [field.key]: current[field.key] === 'true' ? 'false' : 'true' }))}
-                >
-                  {formAnswers[field.key] === 'true' ? 'Yes' : 'No'}
-                </View>
-              ) : field.type === 'multi_select' && field.options?.length ? (
-                <View className='form-options'>
-                  {field.options.map((option) => {
-                    const values = new Set((formAnswers[field.key] ?? '').split(',').filter(Boolean))
-                    return (
-                      <Text
-                        key={option.value}
-                        className={`form-option${values.has(option.value) ? ' form-option--active' : ''}`}
-                        onClick={() => {
-                          const next = new Set(values)
-                          if (next.has(option.value)) next.delete(option.value)
-                          else next.add(option.value)
-                          setFormAnswers((current) => ({ ...current, [field.key]: Array.from(next).join(',') }))
-                        }}
-                      >
-                        {option.label}
-                      </Text>
-                    )
-                  })}
-                </View>
-              ) : field.options?.length ? (
-                <View className='form-options'>
-                  {field.options.map((option) => (
-                    <Text
-                      key={option.value}
-                      className={`form-option${formAnswers[field.key] === option.value ? ' form-option--active' : ''}`}
-                      onClick={() => setFormAnswers((current) => ({ ...current, [field.key]: option.value }))}
-                    >
-                      {option.label}
-                    </Text>
-                  ))}
-                </View>
-              ) : (
-                <Input value={formAnswers[field.key] ?? ''} placeholder={field.type} onInput={(event) => setFormAnswers((current) => ({ ...current, [field.key]: event.detail.value }))} />
-              )}
-            </View>
-          ))}
-          <View className='resource-section__button' onClick={submitCurrentForm}>提交报名表</View>
+      <View className='home-ai-input' onClick={handleAIInput}>
+        <Text className='home-ai-input__placeholder'>请帮我报名</Text>
+        <View className='home-ai-input__send'>
+          <Text>➤</Text>
         </View>
-      )}
+      </View>
     </View>
   )
 }

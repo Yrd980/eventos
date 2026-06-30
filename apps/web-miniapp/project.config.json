@@ -2,10 +2,41 @@
   "miniprogramRoot": "dist/",
   "projectname": "eventos-web-miniapp",
   "description": "Event OS mini program",
-  "appid": "touristappid",
+  "appid": "wx966b9e86479d6bc7",
   "setting": {
-    "urlCheck": false
+    "urlCheck": false,
+    "packNpmManually": true,
+    "packNpmRelationList": [
+      {
+        "packageJsonPath": "./dist/package.json",
+        "miniprogramNpmDistDir": "./dist"
+      }
+    ],
+    "es6": true,
+    "postcss": false,
+    "compileWorklet": false,
+    "minified": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "enhance": false,
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
   },
   "compileType": "miniprogram",
-  "libVersion": "3.7.12"
+  "libVersion": "3.7.12",
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "editorSetting": {}
 }

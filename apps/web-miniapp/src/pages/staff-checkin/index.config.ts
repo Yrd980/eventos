@@ -1,3 +1,3 @@
 export default {
-  navigationBarTitleText: 'Staff Check-in',
+  navigationBarTitleText: '工作人员签到',
 }

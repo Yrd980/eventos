@@ -1312,6 +1312,34 @@ app.get("/activities/:activityId/sessions", async (c) =>
   }),
 );
 
+app.get("/activities/:activityId/speakers", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    await getVisibleActivity(repo, activityId);
+    return c.json(success(await repo.listActivitySessionLinkedSpeakers(activityId)));
+  }),
+);
+
+app.get("/sessions/:sessionId/speakers", async (c) =>
+  withRepo(async (repo) => {
+    const sessionId = c.req.param("sessionId");
+    const session = await repo.getSession(sessionId);
+    if (!session) {
+      throw new DomainError("SESSION_NOT_FOUND", "Session was not found", { status: 404 });
+    }
+    await getVisibleActivity(repo, session.activity_id);
+    return c.json(success(await repo.listSessionSpeakers(sessionId)));
+  }),
+);
+
+app.get("/activities/:activityId/referral-count", async (c) =>
+  withRepo(async (repo) => {
+    const activityId = c.req.param("activityId");
+    await getVisibleActivity(repo, activityId);
+    return c.json(success({ referral_count: 0 }));
+  }),
+);
+
 app.get("/activities/:activityId/expo-booths", async (c) =>
   withRepo(async (repo) => {
     const activityId = c.req.param("activityId");

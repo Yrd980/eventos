@@ -19,6 +19,8 @@ import type {
   RegistrationForm,
   RegistrationSubmission,
   Session,
+  SessionSpeaker,
+  Speaker,
   StaffCheckinResult,
   Survey,
   SurveyAnswer,
@@ -31,13 +33,16 @@ export type QRPassView = ParticipantQRPass
 const API_BASE_KEY = 'eventos_api_base_url'
 const AUTHING_TOKEN_KEY = 'eventos_authing_token'
 const ACTIVITY_ID_KEY = 'eventos_activity_id'
-const DEFAULT_API_BASE_URL = 'http://127.0.0.1:3000'
+declare const __EVENTOS_MINIAPP_API_BASE_URL__: string
+
+const DEFAULT_API_BASE_URL = __EVENTOS_MINIAPP_API_BASE_URL__ || 'http://127.0.0.1:3000'
 const DEV_AUTH_MODE = process.env.EVENTOS_MINIAPP_DEV_AUTH_MODE !== 'false'
 const DEFAULT_AUTHING_TOKEN = DEV_AUTH_MODE ? process.env.EVENTOS_MINIAPP_DEV_AUTH_TOKEN || 'dev-participant-token' : ''
 const READ_CACHE_TTL_MS = 15000
 
 const readCache = new Map<string, { expiresAt: number; value: unknown }>()
 const inflightReads = new Map<string, Promise<unknown>>()
+let cachedApiBaseUrl: string | undefined
 
 export class ApiRequestError extends Error {
   code: DomainErrorCode
@@ -51,16 +56,21 @@ export class ApiRequestError extends Error {
 }
 
 export function getApiBaseUrl() {
+  if (cachedApiBaseUrl !== undefined) return cachedApiBaseUrl
   try {
-    return (Taro.getStorageSync(API_BASE_KEY) as string | undefined) || DEFAULT_API_BASE_URL
+    const stored = (Taro.getStorageSync(API_BASE_KEY) as string | undefined) || ''
+    cachedApiBaseUrl = stored && !stored.includes('127.0.0.1') && !stored.includes('localhost') ? stored : DEFAULT_API_BASE_URL
   } catch {
-    return DEFAULT_API_BASE_URL
+    cachedApiBaseUrl = DEFAULT_API_BASE_URL
   }
+  return cachedApiBaseUrl
 }
 
 export function setApiBaseUrl(value: string) {
   try {
-    Taro.setStorageSync(API_BASE_KEY, value.trim() || DEFAULT_API_BASE_URL)
+    const url = value.trim() || DEFAULT_API_BASE_URL
+    Taro.setStorageSync(API_BASE_KEY, url)
+    cachedApiBaseUrl = undefined
     clearReadCache()
   } catch {
     // Storage can be unavailable during early mini program runtime init.
@@ -162,6 +172,15 @@ function clearReadCache() {
   inflightReads.clear()
 }
 
+function invalidateCache(...patterns: string[]) {
+  for (const key of readCache.keys()) {
+    if (patterns.some((p) => key.includes(p))) readCache.delete(key)
+  }
+  for (const key of inflightReads.keys()) {
+    if (patterns.some((p) => key.includes(p))) inflightReads.delete(key)
+  }
+}
+
 async function cachedRead<T>(path: string, options: { auth?: boolean } = {}) {
   const tokenKey = options.auth === false ? 'public' : getAuthingToken()
   const cacheKey = `${getApiBaseUrl()}|${tokenKey}|${path}`
@@ -191,14 +210,7 @@ export async function loadActivities() {
 
 export async function resolveActivityId() {
   const storedId = getStoredActivityId()
-  if (storedId) {
-    try {
-      await loadActivity(storedId)
-      return storedId
-    } catch {
-      setStoredActivityId('')
-    }
-  }
+  if (storedId) return storedId
 
   const activities = await loadActivities()
   const activityId = activities[0]?.id
@@ -231,7 +243,7 @@ export async function register(activityId: string) {
     method: 'POST',
     idempotency: true,
   })
-  clearReadCache()
+  invalidateCache('/registration', '/qr-pass', '/participant-center')
   return result
 }
 
@@ -245,7 +257,7 @@ export async function submitRegistrationForm(activityId: string, answers: Record
     idempotency: true,
     body: { answers },
   })
-  clearReadCache()
+  invalidateCache('/registration', '/participant-center')
   return result
 }
 
@@ -259,13 +271,13 @@ export async function loadQRPass(activityId: string) {
 
 export async function addMyAgenda(sessionId: string) {
   const result = await apiRequest<MyAgendaItem>(`/sessions/${sessionId}/my-agenda`, { method: 'POST', idempotency: true })
-  clearReadCache()
+  invalidateCache('/my-agenda', '/participant-center')
   return result
 }
 
 export async function removeMyAgenda(sessionId: string) {
   const result = await apiRequest<{ removed: boolean; item?: MyAgendaItem }>(`/sessions/${sessionId}/my-agenda`, { method: 'DELETE', idempotency: true })
-  clearReadCache()
+  invalidateCache('/my-agenda', '/participant-center')
   return result
 }
 
@@ -291,13 +303,13 @@ export async function loadMyBooths(activityId: string) {
 
 export async function addMyBooth(expoBoothId: string) {
   const result = await apiRequest<BoothCollection>(`/expo-booths/${expoBoothId}/my-booths`, { method: 'POST', idempotency: true })
-  clearReadCache()
+  invalidateCache('/my-booths', '/participant-expo', '/participant-center')
   return result
 }
 
 export async function removeMyBooth(expoBoothId: string) {
   const result = await apiRequest<{ removed: boolean; item?: BoothCollection }>(`/expo-booths/${expoBoothId}/my-booths`, { method: 'DELETE', idempotency: true })
-  clearReadCache()
+  invalidateCache('/my-booths', '/participant-expo', '/participant-center')
   return result
 }
 
@@ -311,7 +323,7 @@ export async function checkinBooth(expoBoothId: string) {
     idempotency: true,
     body: { device_metadata: { entry: 'miniapp_expo' } },
   })
-  clearReadCache()
+  invalidateCache('/booth-checkins', '/participant-expo')
   return result
 }
 
@@ -329,7 +341,7 @@ export async function submitSurveyResponse(surveyId: string, answers: Record<str
     idempotency: true,
     body: { answers },
   })
-  clearReadCache()
+  invalidateCache('/surveys', '/participant-center')
   return result
 }
 
@@ -343,10 +355,56 @@ export async function checkinSession(input: { sessionId: string; qrToken: string
       device_metadata: input.deviceMetadata,
     },
   })
-  clearReadCache()
+  invalidateCache('/checkin-count', '/participant-center')
   return result
 }
 
 export async function loadCheckinCount(sessionId: string) {
   return cachedRead<{ session_id: string; count: number }>(`/sessions/${sessionId}/checkin-count`, { auth: false })
+}
+
+export async function loadSpeakers(activityId: string) {
+  try {
+    return await cachedRead<Speaker[]>(`/activities/${activityId}/speakers`, { auth: false })
+  } catch {
+    return []
+  }
+}
+
+export async function loadSessionSpeakers(sessionId: string) {
+  try {
+    return await cachedRead<SessionSpeaker[]>(`/sessions/${sessionId}/speakers`, { auth: false })
+  } catch {
+    return []
+  }
+}
+
+export async function loadSessionLiveEntries(sessionId: string) {
+  try {
+    const activityId = await resolveActivityId()
+    if (!activityId) return []
+    const entries = await loadLiveEntries(activityId)
+    return entries.filter((entry) => entry.session_id === sessionId)
+  } catch {
+    return []
+  }
+}
+
+export async function loadSessionSurveys(sessionId: string) {
+  try {
+    const activityId = await resolveActivityId()
+    if (!activityId) return []
+    const surveys = await loadSurveys(activityId)
+    return surveys.filter((survey) => survey.target_type === 'session' && survey.target_id === sessionId)
+  } catch {
+    return []
+  }
+}
+
+export async function loadReferralCount(activityId: string) {
+  try {
+    return await cachedRead<{ referral_count: number }>(`/activities/${activityId}/referral-count`)
+  } catch {
+    return { referral_count: 0 }
+  }
 }
